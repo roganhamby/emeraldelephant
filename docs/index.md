@@ -2,3 +2,7 @@
 
 I take questions via the Github issues and via Twitter @roganhamby or email if you can find it (it's not hard).
 
+### 2020-06-14 Groking the Relationship Between Circs and Money
+
+
+
