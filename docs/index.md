@@ -6,5 +6,6 @@ I take questions via the Github issues and via Twitter @roganhamby or email if y
 
 ### 2020-06-14 Groking the Relationship Between Circs and Money
 
+A question came across to me, "
 
 
