@@ -12,7 +12,7 @@ A question wasn't directed at me but I was around at the time.  The question was
 
 My reply: "they are, the circ table is actually a child table of bills."
 
-That's a terse reply and the relatinoship between circulations and bills is something that is often confusing to database delvers in Evergreen.   Here is a longer answer.  
+That's a terse reply and the relationship between circulations and bills is something that is often confusing to database delvers in Evergreen.   Here is a longer answer.  
 
 #### Table Inheritance 
 
