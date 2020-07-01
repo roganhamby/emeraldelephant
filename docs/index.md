@@ -103,14 +103,13 @@ They aren’t alone.  I’ve done more clearing of bills in the last month than 
 
 So, we have two components to this: 1) how payments are structured in the database and 2) how to use them to our benefit.  Due to the amount of content, I’m going to break the blog post up into two parts with this first part being how the payments are structured in the database.  Then in my next post, I’ll get into how you can approach doing something with them in the database.
 
-Here are the topics we will cover in this post:
-How bills are structured (quick refresher, look at the 2020-06-16 article for more)
-The kinds of payments 
+Here are the topics we will cover in this post:  
+How bills are structured (quick refresher, look at the 2020-06-16 article for more)  
+The kinds of payments  
 How payments are applied to billings (hint: they're not, mostly)
 
-In part two we will cover: 
-
-Ways to actually pay the bills off
+In part two we will cover:  
+Ways to actually pay the bills off  
 Related concerns with closing transactions 
 
 Let’s get stuck in.
