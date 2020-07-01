@@ -5,8 +5,8 @@ Welcome to Emerald Elephants.  The goal of this blog is to demystify some of the
 I take questions via the Github issues and via Twitter @roganhamby or email if you can find it (it's not hard).
 
 Quick links for posts:  
- [Grokking the Relationship Between Transactions and Bills 2020-06-15](#grokkingbills)   
- [Paying Off Bills part 1: The Where of It](#payingbills1)
+ [Grokking the Relationship Between Transactions and Bills](#grokkingbills) 2020-06-15   
+ [Paying Off Bills part 1: The Where of It](#payingbills1) 2020-06-30  
 
 ### <a name="grokkingbills"></a> Grokking the Relationship Between Transactions and Bills
 
