@@ -14,7 +14,7 @@ Quick links for posts:
 * [Paying Off Bills part 1: The Where of It](#payingbills1) 2020-06-30  
 * [Paying Off Bills part 2: The How of It](#payingbills2) 2020-07-12
 * [Ancestors and Descendants](#ancdesc) 2020-08-01
-* [Views and Tables in A Materialized World](#materialzed) 2020-10-06
+* [Views and Tables in A Materialized World](#materialized) 2020-10-06
 
 ### <a name="grokkingbills"></a> Grokking the Relationship Between Transactions and Bills
 
