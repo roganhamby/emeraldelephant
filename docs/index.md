@@ -516,13 +516,15 @@ If you then look in the file you will see:
 
 It looks a bit funky because it’s borrowing its base structure from another table but it is a standard, simple, every day, workhorse table.  Note that we don’t call lit a materialized view but we do call it materialized because that is what it is.  And if you want to see how we materialize it just scroll down a bit further in the file and you will see it referenced from triggers like this one:
 
-    CREATE OR REPLACE FUNCTION money.mat_summary_create () RETURNS TRIGGER AS $$
-    BEGIN
-        INSERT INTO money.materialized_billable_xact_summary (id, usr, xact_start, xact_finish, total_paid, total_owed, balance_owed, xact_type)
-            VALUES ( NEW.id, NEW.usr, NEW.xact_start, NEW.xact_finish, 0.0, 0.0, 0.0, TG_ARGV[0]);
-        RETURN NEW;
-    END;
-    $$ LANGUAGE PLPGSQL;
+```sql
+CREATE OR REPLACE FUNCTION money.mat_summary_create () RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO money.materialized_billable_xact_summary (id, usr, xact_start, xact_finish, total_paid, total_owed, balance_owed, xact_type)
+     VALUES ( NEW.id, NEW.usr, NEW.xact_start, NEW.xact_finish, 0.0, 0.0, 0.0, TG_ARGV[0]);
+RETURN NEW;
+END;
+$$ LANGUAGE PLPGSQL;
+```
 
 That may seem intimidating but functions are just tiny little SQL scripts and all it really means is here is a piece of code to insert into the table these values whenever the code is run.  Well, this kind of function RETURNS TRIGGER which means it will run when events defined for it happen in the database - usually rows of a table is inserted, updated, or deleted.  And if we search for the name of the function we find just a bit further on this:
 
