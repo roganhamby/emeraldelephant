@@ -470,12 +470,14 @@ But if you try …
 
 On a small little test system you will get a quick response but on a large system you’re in for a world of wait.  Why?   Because what you’ve actually just done is executed this query: 
 
+```sql
      SELECT materialized_billable_xact_summary.usr,
         sum(materialized_billable_xact_summary.total_paid) AS total_paid,
         sum(materialized_billable_xact_summary.total_owed) AS total_owed,
         sum(materialized_billable_xact_summary.balance_owed) AS balance_owed
        FROM money.materialized_billable_xact_summary
        GROUP BY materialized_billable_xact_summary.usr;
+```
 
 You can get that in psql by doing 
 
@@ -485,11 +487,13 @@ which will show the query behind any view.
 
 However, specifying a value means you’re narrowing it down.
 
+```sql
     rhamby=# select * from money.usr_summary where usr = 12345;
        usr   | total_paid | total_owed | balance_owed 
     ---------+------------+------------+--------------
       12345  |      19.25 |      21.50 |         2.25
     (1 row)
+```
 
 And the response will come lickety-split.  So views are very handy at giving you a manipulated view of (see what I did there?) the data but they don’t solve the problem of getting access to a large collection of manipulated data quickly.
 
@@ -511,8 +515,10 @@ If you’re new to Evergreen’s git structure this is where the SQL files to cr
 
 If you then look in the file you will see:
 
-    CREATE TABLE money.materialized_billable_xact_summary AS
-        SELECT * FROM money.billable_xact_summary WHERE 1=0;
+```sql
+CREATE TABLE money.materialized_billable_xact_summary AS
+SELECT * FROM money.billable_xact_summary WHERE 1=0;
+```
 
 It looks a bit funky because it’s borrowing its base structure from another table but it is a standard, simple, every day, workhorse table.  Note that we don’t call lit a materialized view but we do call it materialized because that is what it is.  And if you want to see how we materialize it just scroll down a bit further in the file and you will see it referenced from triggers like this one:
 
@@ -528,7 +534,9 @@ $$ LANGUAGE PLPGSQL;
 
 That may seem intimidating but functions are just tiny little SQL scripts and all it really means is here is a piece of code to insert into the table these values whenever the code is run.  Well, this kind of function RETURNS TRIGGER which means it will run when events defined for it happen in the database - usually rows of a table is inserted, updated, or deleted.  And if we search for the name of the function we find just a bit further on this:
 
-    CREATE TRIGGER mat_summary_create_tgr AFTER INSERT ON money.grocery FOR EACH ROW EXECUTE PROCEDURE money.mat_summary_create ('grocery');
+```sql
+CREATE TRIGGER mat_summary_create_tgr AFTER INSERT ON money.grocery FOR EACH ROW EXECUTE PROCEDURE money.mat_summary_create ('grocery');
+```
 
 So after a row is added to money.grocery this will run this code and also create a row in the materialized table.  Looking in the same area you will also find functions for updating the materialized table whenever a row is updated there.  Money is a prime candidate for this because we want billing interfaces to respond quickly in the staff client and not have to run the queries constantly.  In the reporter schema, you will also find super\_simple\_record sources to provide cleaned-up versions of title, author, and more that are also materialized.
 
