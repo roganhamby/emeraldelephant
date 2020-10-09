@@ -30,6 +30,7 @@ That's a terse reply and the relationship between circulations and bills is some
 
 Critical to how the ids are shared is the concept of table inheritance.  When I have taught this concept in classes I have found people sometimes struggle with understanding it so bear with me.  If you feel comfortable with it skip ahead to the heading 'money.billable_xact'.  I think that many who have struggled with the concept of inheritance think 'it has to be more complicated than that.'  But it's not.  How it works is simple, one table is a subset of another.  It works like this, let's say you create a table to represent creatures.  Oh, quick head's up, I'm going to use some SQL to illustrate the point but it's introductory level SQL.  If you're not familiar with it I think just following the meaning of the key terms in English will still get to the point.
 
+```sql
     CREATE TABLE animals (	
         name TEXT,
         age INTEGER
@@ -39,15 +40,19 @@ Critical to how the ids are shared is the concept of table inheritance.  When I 
         poisonous BOOLEAN NOT NULL,
         length INTEGER 
     ) INHERITS (animals);
+```
 
 What does this do?  Imagine you have a few million rows to put into the animals table.  Sure, you could put the columns in for the reptiles but then you're wasting a whole bunch of space for all those non-snakes in there.  Plus it would seem a bit odd to have to mark a panda bear as non-poisonous since that column doesn't allow NULL.  At least I'm assuming pandas are non-poisonous.  Let's go with that.
 
 The important thing to understand is that by having table 'snakes' inherit from table 'animals' those columns from 'animals' - name and age are present in snakes as well.  The columns aren't copied but an actual subset so when I do this :
 
+```sql
     INSERT INTO snakes (name,poisonous) VALUES ('brown burrower',FALSE);
+```
 
 This is what appears if you select from each table respectively:
 
+```sql
     rhamby=# select * from animals;  
     name | brown burrower
     age  |
@@ -57,9 +62,11 @@ This is what appears if you select from each table respectively:
     age       |
     poisonous | f  
     length    |
+```
 
 And if I update the age on snakes:
 
+```sql
     rhamby=# update snakes set age = 2 where name = 'brown burrower';
     UPDATE 1
 
@@ -72,6 +79,7 @@ And if I update the age on snakes:
     age       | 2
     poisonous | f
     length    |
+```
 
 So, to reiterate one table is a subset of the other with the inherited columns shared between the tables.  All good?  Now, let's head into the trees.
 
@@ -208,16 +216,21 @@ First let’s talk about the ways of getting rid of bills and what they mean.
 
 Voiding a single billing is simple.
 
+```sql
     UPDATE money.billing SET voided = TRUE, voider = 1 WHERE id = 1;
+```
 
 Of course, this makes some big assumptions.  One of those assumptions is that you want to resolve billings and not whole transactions.  Another assumption is that you don’t care about what kind of billing the billing is.  But if you do care …  For example, maybe you want to remove all late fees on a specific circulation but not lost fees and things like that.  You can do that like this:
 
+```sql
     UPDATE money.billing 
     SET voided = TRUE, voider = 1 
     WHERE xact = 123 AND btype = (SELECT id FROM config.billing_type WHERE name = ‘Overdue Materials’);
+```
 
 However, all of this assumes no payments have been made on the transaction.  You really want to check that first, like this:  
 
+```sql
     select * from money.billable_xact_summary where id = 4;;
     -[ RECORD 1 ]-----+------------------------------
     id                | 4
@@ -234,12 +247,15 @@ However, all of this assumes no payments have been made on the transaction.  You
     last_billing_type | Overdue materials
     balance_owed      | 0.20
     xact_type         | circulation
+```
 
 Here we have a record where all the bills were overdue fines that added up to $4.20.  All but $0.20 were paid on it.  If we did this:
 
+```sql
     UPDATE money.billing SET voided = TRUE, voider = 1 
     WHERE xact = 4 
     AND btype = (SELECT id FROM config.billing_type WHERE name = ‘Overdue Materials’);
+```
 
 We would end up with a negative balance of $4.00 since the bills would be voided but $4.00 in payments were already on the account.  This is no bueno.  So, voiding is only useful per billing when the total left won’t result in a negative billing.  I use money.billable\_xact\_summary and check to see if balance\_owed is equal to total_owed.  If it’s not then some payments have already been made and I skip over it.  I only use voiding on bills where they haven’t been touched yet.  
 
@@ -252,6 +268,7 @@ Paying the Price
 
 Let’s go back and look at some bill summaries again.
 
+```sql
     select id, balance_owed from money.billable_xact_summary where id < 10;
      id | balance_owed 
     ----+--------------
@@ -259,22 +276,26 @@ Let’s go back and look at some bill summaries again.
       5 |         0.00
       6 |        -0.10
       7 |         1.20
+```
 
 With these four bills we have four very different scenarios.  #4 has been partially paid down to twenty cents, #5 has been paid off, #6 has been overpaid and is now a negative balance and #7 hasn’t had any payments at all.
 
 One simple way to handle all of these is :  
 
-    INSERT INTO money.forgive_payment (xact, amount, note, amount, amount_collected, accepting_usr) 
-    SELECT id, balance_owed * -1, ‘forgiven due to fresh start project’, balance_owed * -1, 1 
-    FROM money.billable_xact_summary 
-    WHERE id < 10;
+```sql
+INSERT INTO money.forgive_payment (xact, amount, note, amount, amount_collected, accepting_usr) 
+SELECT id, balance_owed * -1, ‘forgiven due to fresh start project’, balance_owed * -1, 1 
+FROM money.billable_xact_summary 
+WHERE id < 10;
+```
 
 Technically this works for all of them but I have two quibbles.  One, it unnecessarily creates a new entry of 0.00 for #5 which can create a lot of junk rows in the database.  So, I would recommend a ‘WHERE balance_woed != 0’ filter for that.  My other issue has to do with a negative balance.  Technically you have made a negative payment to balance a negative bill which from a forensic standpoint is bad accounting.  It works because … it’s math but it’s not pretty.  I would recommend this:
 
-    INSERT INTO money.forgive_payment (xact, amount, note, amount, amount_collected, accepting_usr) 
-    SELECT id, balance_owed * -1, ‘forgiven due to fresh start project’, balance_owed * -1, 1 
-    FROM money.billable_xact_summary W
-    HERE id < 10 AND balance_owed > 0;
+```sql
+INSERT INTO money.forgive_payment (xact, amount, note, amount, amount_collected, accepting_usr) 
+SELECT id, balance_owed * -1, ‘forgiven due to fresh start project’, balance_owed * -1, 1 
+FROM money.billable_xact_summary WHERE id < 10 AND balance_owed > 0;
+```
 
 This will avoid both zero amounts and ugly negative payments.  Now, here I used the forgive payments because the context is this project but you could do any kind of payments like this though honestly, it’s hard to imagine situations where you would want to do bulk payments of other kinds in the database.  
 
@@ -282,16 +303,20 @@ This will avoid both zero amounts and ugly negative payments.  Now, here I used 
 
 Let’s take what we’ve talked about so far and put it into some context.  Let us start by creating a schema to hold our work in.  
 
-    CREATE SCHEMA fine_cleanup;
+```sql
+CREATE SCHEMA fine_cleanup;
+```
 
 Let us imagine we are working with a library that want to remove all past circulation fines related to any items that are not currently listed as having the item status of LOST.  They also want to clean up all past grocery and booking fines.  Now, if they had been concerned about only circulations we could have just used that table but instead, we are going to use a combination of the money.billable_xact and the action.circulation tables.  
 
-    DROP TABLE IF EXISTS fine_cleanup.loans_to_cleanup;
-    CREATE TABLE fine_cleanup.nuke_bills AS
-    SELECT mb.id AS xact_id, mbxs.balance_owed, mbxs.total_paid 
-    FROM money.billable_xact mb 
-    JOIN money.billable_xact_summary mbxs ON mbxs.id = mb.id 
-    WHERE mb.xact_finish IS NULL AND mbxs.balance_owed != 0;
+```sql
+DROP TABLE IF EXISTS fine_cleanup.loans_to_cleanup;
+CREATE TABLE fine_cleanup.nuke_bills AS
+SELECT mb.id AS xact_id, mbxs.balance_owed, mbxs.total_paid 
+FROM money.billable_xact mb 
+JOIN money.billable_xact_summary mbxs ON mbxs.id = mb.id 
+WHERE mb.xact_finish IS NULL AND mbxs.balance_owed != 0;
+```
 
 Depending on the size of your data this stage could take a while since you’re accessing large tables and views but that is why it’s important to filter out the ones where the transactions have been closed already by looking at the xact_finish column.  On a smaller system you could grab all of them and filter later but on a large one … yeah, filter upfront.
 
@@ -299,22 +324,28 @@ Now, let’s get rid of the ones that are attached to items that are now LOST.  
 
 Why not build our table off circs to begin with?  Because we wanted to get groceries and booking bills as well which using money.billable_xact gives us.  
 
-    DELETE FROM fine_cleanup.nuke_bills 
-    WHERE xact_id IN (SELECT id FROM action.circulation WHERE target_copy IN (SELECT id FROM asset.copy WHERE status = (SELECT id FROM config.copy_status WHERE name = ‘Lost’)));
+```sql
+DELETE FROM fine_cleanup.nuke_bills 
+WHERE xact_id IN (SELECT id FROM action.circulation WHERE target_copy IN (SELECT id FROM asset.copy WHERE status = (SELECT id FROM config.copy_status WHERE name = ‘Lost’)));
+```
 
 First, let’s void the bills that have no payments: 
 
-    UPDATE money.billing 
-    SET voided = TRUE, voider = 1 
-    WHERE xact IN (SELECT xact_id FROM fine_cleanup.nuke_bills 
-    WHERE balance_owed > 0 AND total_paid = 0);
+```sql
+UPDATE money.billing 
+SET voided = TRUE, voider = 1 
+WHERE xact IN (SELECT xact_id FROM fine_cleanup.nuke_bills 
+WHERE balance_owed > 0 AND total_paid = 0);
+```
 
 This is like the previous voiding statement but we are now grabbing everything from the table we made listing bills and saying only give them to be if the balance is postiive and no payments have been made.  We will use a forgive payment to take care of those partial bills like this:
 
+```sql
     INSERT INTO money.forgive_payment (xact, amount, note, amount, amount_collected, accepting_usr) 
     SELECT id, balance_owed * -1, ‘forgiven due to fresh start project’, balance_owed * -1, 1 
     FROM fine_cleanup.nuke_bills 
     WHERE balance_owed > 0 AND total_paid > 0;
+```
 
 At this point you could be done if you’d changed that last line to :
 
@@ -332,6 +363,7 @@ Adjusting Bills works great for negative balances since it’s not a payment but
 
 I’m probably going to want to sue some logic that is bit beyond what a single statement easily gives me so I’m probably going to use a DO loop.  This will allow me to setup logic to loop through the individual billings.  There is a lot going on here so lines that start with two dashes will be comments to help explain the code.
 
+```sql
     DO $$
         DECLARE
         transaction_id   BIGINT;
@@ -369,6 +401,7 @@ I’m probably going to want to sue some logic that is bit beyond what a single 
             END IF;
         END LOOP;
     END $$;
+```
 
 Note that the above code is adapted from something else I’ve done and untested.  I’m providing it as an illustration of the logic involved.  Indeed, to return to an above point, if you’re talking about dozens of these, giving a report to circ staff to adjust to zero the negative balances is perfectly legitimate.  
 
@@ -380,6 +413,7 @@ After the actual billings are paid out there are other things you will want to t
 
 Our last few entries dealt with larger complicated issues in the Evergreen database but this time we’re going to cover something simple, quick, and very useful - ancestors and descendants.  Let us imagine we have a fairly typical setup in Evergreen like this:
 
+```sql
     rhamby=# select id, parent_ou, ou_type, shortname, name from actor.org_unit;
       id  | parent_ou | ou_type | shortname |             name              
      -----+-----------+---------+-----------+-------------------------------
@@ -388,61 +422,75 @@ Our last few entries dealt with larger complicated issues in the Evergreen datab
       105 |       101 |       3 | MARTHA    | Martha Wayne Memorial Library
       104 |       101 |       3 | THOMAS    | Thomas Wayne Memorial Library
      (4 rows)
+```
 
 Here we have a consortium called GOTHAM, a neighborhood system called BOWERY and two local branches inside the BOWERY the Martha Wayne Memorial Library and the Thomas Wayne Memorial Library.  This is a very simple example but you can easily imagine an org tree that has dozens of branches and several other tiers of libraries.  
 
 Let us say you need information about all the branches, it is typical to write a query including each branch.  For example, you could do:
 
-     SELECT COUNT(*) FROM action.circulation WHERE circ_lib IN (104,105);
+```sql
+SELECT COUNT(*) FROM action.circulation WHERE circ_lib IN (104,105);
+```
 
 But, what about if some circulations may be at the system level for some reason?  You could of course do:
 
-     SELECT COUNT(*) FROM action.circulation WHERE circ_lib IN (101,104,105);
+```sql
+SELECT COUNT(*) FROM action.circulation WHERE circ_lib IN (101,104,105);
+```
 
 And this works great for just a few branches.  But imagine the example where there are dozens or hundreds.  What if you mistype a value in the list?  You can look them up with a subquery like this:
 
-     SELECT COUNT(*) FROM action.circulation WHERE circ_lib IN (SELECT id FROM actor.org_unit WHERE parent_ou = 101);
+```sql
+SELECT COUNT(*) FROM action.circulation WHERE circ_lib IN (SELECT id FROM actor.org_unit WHERE parent_ou = 101);
+```
 
 But, you want the BOWERY also so ….
 
-     SELECT COUNT(*) FROM action.circulation WHERE circ_lib IN (SELECT id FROM actor.org_unit WHERE parent_ou = 101) OR circ_lib = 101;
+```sql
+SELECT COUNT(*) FROM action.circulation WHERE circ_lib IN (SELECT id FROM actor.org_unit WHERE parent_ou = 101) OR circ_lib = 101;
+```
 
 Now, what if there is a fourth tier or subbranches, book mobiles or other complications?  What if you forget an ‘OR’ condition?  That is where descendant functions come in.  This the same way that Evergreen itself looks up lists of descendants to see where things like circulation policies apply.
 
 For example,
 
-     rhamby=# SELECT 1, parent_ou, shortname FROM actor.org_unit_descendants(101);
-      ?column? | parent_ou | shortname 
-     ----------+-----------+-----------
-             1 |         1 | BOWERY
-             1 |       101 | MARTHA
-             1 |       101 | THOMAS
-     (3 rows)
-
+```sql
+rhamby=# SELECT 1, parent_ou, shortname FROM actor.org_unit_descendants(101);
+  ?column? | parent_ou | shortname 
+ ----------+-----------+-----------
+         1 |         1 | BOWERY
+         1 |       101 | MARTHA
+         1 |       101 | THOMAS
+ (3 rows)
+```
 
 And to redo the earlier query:
 
-     SELECT COUNT(*) FROM action.circulation WHERE circ_lib IN (SELECT id FROM actor.org_unit_descendants(101));
+```sql
+SELECT COUNT(*) FROM action.circulation WHERE circ_lib IN (SELECT id FROM actor.org_unit_descendants(101));
+```
 
 You can do the same with permission groups, permission.grp_descendants.  For example:
 
-     rhamby=# select id, name, parent from permission.grp_descendants(3);
-      id |            name            | parent 
-     ----+----------------------------+--------
-       3 | Staff                      |      1
-       4 | Catalogers                 |      3
-       5 | Circulators                |      3
-       6 | Acquisitions               |      3
-       7 | Acquisitions Administrator |      3
-       8 | Cataloging Administrator   |      3
-       9 | Circulation Administrator  |      3
-      10 | Local Administrator        |      3
-      11 | Serials                    |      3
-      12 | System Administrator       |      3
-      13 | Global Administrator       |      3
-      14 | Data Review                |      3
-      15 | Volunteers                 |      3
-     (13 rows)
+```sql
+ rhamby=# select id, name, parent from permission.grp_descendants(3);
+  id |            name            | parent 
+ ----+----------------------------+--------
+   3 | Staff                      |      1
+   4 | Catalogers                 |      3
+   5 | Circulators                |      3
+   6 | Acquisitions               |      3
+   7 | Acquisitions Administrator |      3
+   8 | Cataloging Administrator   |      3
+   9 | Circulation Administrator  |      3
+  10 | Local Administrator        |      3
+  11 | Serials                    |      3
+  12 | System Administrator       |      3
+  13 | Global Administrator       |      3
+  14 | Data Review                |      3
+  15 | Volunteers                 |      3
+ (13 rows)
+```
 
 Although less commonly used there are also functions that look at the ancestors of an org unit or permission tree rather than descendants: permission.grp\_ancestors and actor.org\_unit\_ancestors.
 
@@ -460,23 +508,27 @@ My mind went to pseudo-materialized tables.  Let’s back up.  Everyone reading 
 
 If you need an illustration between the two go to a good sized data base and search a table and ask for everything, say ….
 
-    SELECT * FROM asset.copy;  
+```sql
+SELECT * FROM asset.copy;  
+```
 
 You might be waiting a good minute or so but you’ll probably get a response fairly quickly even with a huge table.  By the way, do this on a test system.  Seriously. 
 
 But if you try … 
 
-    SELECT * FROM money.usr_summary;
+```sql
+SELECT * FROM money.usr_summary;
+```
 
 On a small little test system you will get a quick response but on a large system you’re in for a world of wait.  Why?   Because what you’ve actually just done is executed this query: 
 
 ```sql
-     SELECT materialized_billable_xact_summary.usr,
-        sum(materialized_billable_xact_summary.total_paid) AS total_paid,
-        sum(materialized_billable_xact_summary.total_owed) AS total_owed,
-        sum(materialized_billable_xact_summary.balance_owed) AS balance_owed
-       FROM money.materialized_billable_xact_summary
-       GROUP BY materialized_billable_xact_summary.usr;
+SELECT materialized_billable_xact_summary.usr,
+    sum(materialized_billable_xact_summary.total_paid) AS total_paid,
+    sum(materialized_billable_xact_summary.total_owed) AS total_owed,
+    sum(materialized_billable_xact_summary.balance_owed) AS balance_owed
+    FROM money.materialized_billable_xact_summary
+    GROUP BY materialized_billable_xact_summary.usr;
 ```
 
 You can get that in psql by doing 
@@ -488,11 +540,11 @@ which will show the query behind any view.
 However, specifying a value means you’re narrowing it down.
 
 ```sql
-    rhamby=# select * from money.usr_summary where usr = 12345;
-       usr   | total_paid | total_owed | balance_owed 
-    ---------+------------+------------+--------------
-      12345  |      19.25 |      21.50 |         2.25
-    (1 row)
+rhamby=# select * from money.usr_summary where usr = 12345;
+   usr   | total_paid | total_owed | balance_owed 
+---------+------------+------------+--------------
+  12345  |      19.25 |      21.50 |         2.25
+(1 row)
 ```
 
 And the response will come lickety-split.  So views are very handy at giving you a manipulated view of (see what I did there?) the data but they don’t solve the problem of getting access to a large collection of manipulated data quickly.
@@ -526,8 +578,8 @@ It looks a bit funky because it’s borrowing its base structure from another ta
 CREATE OR REPLACE FUNCTION money.mat_summary_create () RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO money.materialized_billable_xact_summary (id, usr, xact_start, xact_finish, total_paid, total_owed, balance_owed, xact_type)
-     VALUES ( NEW.id, NEW.usr, NEW.xact_start, NEW.xact_finish, 0.0, 0.0, 0.0, TG_ARGV[0]);
-RETURN NEW;
+    VALUES ( NEW.id, NEW.usr, NEW.xact_start, NEW.xact_finish, 0.0, 0.0, 0.0, TG_ARGV[0]);
+    RETURN NEW;
 END;
 $$ LANGUAGE PLPGSQL;
 ```
