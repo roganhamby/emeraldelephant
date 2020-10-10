@@ -15,7 +15,7 @@ Quick links for posts:
 * [Paying Off Bills part 2: The How of It](#payingbills2) 2020-07-12
 * [Ancestors and Descendants](#ancdesc) 2020-08-01
 * [Views and Tables in A Materialized World](#materialized) 2020-10-06
-* [Do the Bibs Match the Copies](doesthebibmatchthecopies) 2020-10-09
+* [Do the Bibs Match the Copies](#dotheymatch) 2020-10-09
 
 ### <a name="grokkingbills"></a> Grokking the Relationship Between Transactions and Bills
 
@@ -595,7 +595,7 @@ So after a row is added to money.grocery this will run this code and also create
 
 So, that is my answer for a not unique but something idiosyncratic to be aware that Evergreen does on the database level.
 
-### <a name="doesthebibmatchthecopies"></a> Do the Bibs Match the Copies
+### <a name="dotheymatch"></a> Do the Bibs Match the Copies
 
 The question was simple.  
 
