@@ -684,44 +684,6 @@ Today someone asked on the general Evergreen list about circulation reports.  Th
 
 I'm going to do this as multiple posts so the first one will be just looking at the core circulation table, action.circulation.
 
-         Column         |           Type           |                            Modifiers                             
-------------------------+--------------------------+------------------------------------------------------------------
- id                     | bigint                   | not null default nextval('money.billable_xact_id_seq'::regclass)
- usr                    | integer                  | not null
- xact_start             | timestamp with time zone | not null default now()
- xact_finish            | timestamp with time zone | 
- unrecovered            | boolean                  | 
- target_copy            | bigint                   | not null
- circ_lib               | integer                  | not null
- circ_staff             | integer                  | not null
- checkin_staff          | integer                  | 
- checkin_lib            | integer                  | 
- renewal_remaining      | integer                  | not null
- due_date               | timestamp with time zone | 
- stop_fines_time        | timestamp with time zone | 
- checkin_time           | timestamp with time zone | 
- create_time            | timestamp with time zone | not null default now()
- duration               | interval                 | 
- fine_interval          | interval                 | not null default '1 day'::interval
- recurring_fine         | numeric(6,2)             | 
- max_fine               | numeric(6,2)             | 
- phone_renewal          | boolean                  | not null default false
- desk_renewal           | boolean                  | not null default false
- opac_renewal           | boolean                  | not null default false
- duration_rule          | text                     | not null
- recurring_fine_rule    | text                     | not null
- max_fine_rule          | text                     | not null
- stop_fines             | text                     | 
- workstation            | integer                  | 
- checkin_workstation    | integer                  | 
- checkin_scan_time      | timestamp with time zone | 
- parent_circ            | bigint                   | 
- grace_period           | interval                 | not null
- copy_location          | integer                  | not null default 1
- auto_renewal           | boolean                  | not null default false
- auto_renewal_remaining | integer                  | 
-
-
 There are a lot of potentially useful bits of information in here.  Le'ts start with: 
 
     parent_circ            | bigint                   | 
