@@ -16,6 +16,7 @@ Quick links for posts:
 * [Ancestors and Descendants](#ancdesc) 2020-08-01
 * [Views and Tables in A Materialized World](#materialized) 2020-10-06
 * [Do the Bibs Match the Copies](#dotheymatch) 2020-10-09
+* [Circulation Basics, Action.Circulation](#circbasics1) 2020-10-19
 
 ### <a name="grokkingbills"></a> Grokking the Relationship Between Transactions and Bills
 
@@ -677,3 +678,75 @@ rhamby=# select * from copies limit 5;
 
 There you.  With this you can skim things pretty quickly and construct queries to look at more details.
 
+### <a name="circbasics1"></a> Basics of Circulation Reports part 1 Action.Circulation
+
+Today someone asked on the general Evergreen list about circulation reports.  Their context was the reporter but it brought to mind all the questions I've had over time about circ reports and all the ways they can be miscounted.  So, I'm going to talk about the database here but all of these columns and tables have equivalents in the reporter.  This is a short and dirty common questions about circulations and how to count them.
+
+I'm going to do this as multiple posts so the first one will be just looking at the core circulation table, action.circulation.
+
+         Column         |           Type           |                            Modifiers                             
+------------------------+--------------------------+------------------------------------------------------------------
+ id                     | bigint                   | not null default nextval('money.billable_xact_id_seq'::regclass)
+ usr                    | integer                  | not null
+ xact_start             | timestamp with time zone | not null default now()
+ xact_finish            | timestamp with time zone | 
+ unrecovered            | boolean                  | 
+ target_copy            | bigint                   | not null
+ circ_lib               | integer                  | not null
+ circ_staff             | integer                  | not null
+ checkin_staff          | integer                  | 
+ checkin_lib            | integer                  | 
+ renewal_remaining      | integer                  | not null
+ due_date               | timestamp with time zone | 
+ stop_fines_time        | timestamp with time zone | 
+ checkin_time           | timestamp with time zone | 
+ create_time            | timestamp with time zone | not null default now()
+ duration               | interval                 | 
+ fine_interval          | interval                 | not null default '1 day'::interval
+ recurring_fine         | numeric(6,2)             | 
+ max_fine               | numeric(6,2)             | 
+ phone_renewal          | boolean                  | not null default false
+ desk_renewal           | boolean                  | not null default false
+ opac_renewal           | boolean                  | not null default false
+ duration_rule          | text                     | not null
+ recurring_fine_rule    | text                     | not null
+ max_fine_rule          | text                     | not null
+ stop_fines             | text                     | 
+ workstation            | integer                  | 
+ checkin_workstation    | integer                  | 
+ checkin_scan_time      | timestamp with time zone | 
+ parent_circ            | bigint                   | 
+ grace_period           | interval                 | not null
+ copy_location          | integer                  | not null default 1
+ auto_renewal           | boolean                  | not null default false
+ auto_renewal_remaining | integer                  | 
+
+
+There are a lot of potentially useful bits of information in here.  Le'ts start with: 
+
+    parent_circ            | bigint                   | 
+    renewal_remaining      | integer                  | not null
+ 
+ Many ILSes track renewals by a value on a circulation table and some poeple mistak the renewal_remaining as that.  It is not.  In Evergreen it simply tracks what it says.  Each renewal is its own entry in action.circualation and the previous circulation is linked as parent_circ.    So if your original circulation is id 9001 parent_circ NULL renwals_remaining 2, renewal one might be id 9005 parent_circ 9001 renewals_remaining 1.
+ 
+    xact_start             | timestamp with time zone | not null default now()
+    create_time            | timestamp with time zone | not null default now()
+
+A lot of people consider these redundant and at first glance they are.  Indeed, the vast majority of the time they are but there are important cases where they are not.  Create time is when the record is created while xact_start is the beginning of the transaction.  In a normal circ they are the same but in migrated or offline transactions they will be different.
+
+    xact_finish            | timestamp with time zone | 
+    stop_fines_time        | timestamp with time zone | 
+    checkin_time           | timestamp with time zone | 
+    checkin_scan_time      | timestamp with time zone | 
+
+Let's break these down.  xact\_finish has nothing to do with when the material is returned to the library, it marks the end of the circulation as a billable event, or when the bills (if any) are resolved.  The stop\_fines\_time is simply when fines stop potentially accumulating, either because it was checked in (perhaps without any bills), it hits max fines or whatever.  The checkin_time is when it's _considered_ to be checked in, perhaps due to a checkin modifier or something.  The checkin\_scan\_time is when it was actually scanned in though.
+
+    copy_location          | integer                  | not null default 1
+ 
+ This is unreliable if you have an older Evergreen system with old circulations.  This captures the shelving location at the time of circulation so if you check out DVDs from a NEW DVDS shelving location and they are later moved to NO ONE CARES ANYMORE DVDS you can see how they circulated then.  However, this when this was added there was no way to know what the shelving location was for items in existing circs so they were set to 1 or Stacks.
+ 
+    circ_lib               | integer                  | not null
+  
+  This one creates a bit of confusion because there is also a circ\_lib on asset.copy.  The difference is pretty simple.  circ\_lib on asset.copy has nothing to do with where an item actually circulates, it has to do with being the field that the circulation matrix refers to in the copy_circ_lib field.  So, in theory it refers to circulating library but it's confusing because a circulation policy may not use it at all so the circulating library may be irrelevant to how it actually circulates.  Indeed, in the asset.copy it really refers to where the item is circulating from.  My opinion is that it should probably be called something like home_lib but that ship has sailed long ago.  The circ\_lib field on action.circulation though - that is where the item actually circulated.
+  
+  
