@@ -17,6 +17,7 @@ Quick links for posts:
 * [Views and Tables in A Materialized World](#materialized) 2020-10-06
 * [Do the Bibs Match the Copies](#dotheymatch) 2020-10-09
 * [Circulation Basics, Action.Circulation](#circbasics1) 2020-10-19
+* [Circulation Basics, Tables and Views](#circbasics2) 2020-10-25
 
 ### <a name="grokkingbills"></a> Grokking the Relationship Between Transactions and Bills
 
@@ -689,7 +690,7 @@ There are a lot of potentially useful bits of information in here.  Le'ts start 
     parent_circ            | bigint                   | 
     renewal_remaining      | integer                  | not null
  
- Many ILSes track renewals by a value on a circulation table and some poeple mistak the renewal_remaining as that.  It is not.  In Evergreen it simply tracks what it says.  Each renewal is its own entry in action.circualation and the previous circulation is linked as parent_circ.    So if your original circulation is id 9001 parent_circ NULL renwals_remaining 2, renewal one might be id 9005 parent_circ 9001 renewals_remaining 1.
+ Many ILSes track renewals by a value on a circulation table and some poeple mistak the renewal_remaining as that.  It is not.  In Evergreen it simply tracks what it says.  Each renewal is its own entry in action.circualation and the previous circulation is linked as parent_circ.    So if your original circulation is id 9001 parent_\circ NULL renwals\_remaining 2, renewal one might be id 9005 parent\_circ 9001 renewals\_remaining 1.
  
     xact_start             | timestamp with time zone | not null default now()
     create_time            | timestamp with time zone | not null default now()
@@ -711,4 +712,133 @@ Let's break these down.  xact\_finish has nothing to do with when the material i
   
   This one creates a bit of confusion because there is also a circ\_lib on asset.copy.  The difference is pretty simple.  circ\_lib on asset.copy has nothing to do with where an item actually circulates, it has to do with being the field that the circulation matrix refers to in the copy_circ_lib field.  So, in theory it refers to circulating library but it's confusing because a circulation policy may not use it at all so the circulating library may be irrelevant to how it actually circulates.  Indeed, in the asset.copy it really refers to where the item is circulating from.  My opinion is that it should probably be called something like home_lib but that ship has sailed long ago.  The circ\_lib field on action.circulation though - that is where the item actually circulated.
   
-  
+### <a name="circbasics2"></a> Basics of Circulation Reports part 2, Tables and Views
+
+If you go in the reporter and look at circulation data sources it is easy to feel overwhelmed.  There are a bunch of sources and it often isn't clear what is a table and what is a view.  So, today in part two of reporting on circulations we will quickly go through the actual tables that store circulation data and the views that just report it.  The first one we went over in more detail last week, action.circulation.  I don't need to go into it more except to say that when I refer to a circulation like data source I'm going to be talking about one that mostly share the same columns as action.circulaton.  
+
+The table action.aged\_circulation may or may not have anything in it depending on your system preferences.  
+
+Adjacent action.emergency\_closing\_circulation and action.usr\_circ\_history.  There are four global flags to set that set controls for how circulations get aged and a server side cron job that has to be enbled for it.  The purpose of aging circulations is fundamentally to protect patron privacy while keeping statistics.  As circulations are aged the row is removed from action.circulation and moved to action.aged\_circulation and the data transformed.  The value for the usr is entirely removed and new columns are added to provide an annoymous set of patron statistics:  
+
+```sql
+         Column         |           Type           |       Modifiers        
+ usr_post_code          | text                     | 
+ usr_home_ou            | integer                  | not null
+ usr_profile            | integer                  | not null
+ usr_birth_year         | integer                  | 
+```
+
+Statistically you can actually de-anonymize many transactions with birth year and postal code.  There is a bug here for that:  https://bugs.launchpad.net/evergreen/+bug/1861239 and a patch I supplied for allowing libraries to turn off the collection of one or the other.  It's currently in that discussion limbo stage that bugs sometimes fall into.  My opinions are on the bug if anyone is curious.
+
+If there is one "wow, I didn't know that" I get a lot when I talk about circulation data sources it is that non cataloged circulations are stored separately from regular circulations.  Sometimes I've even talked to libraries and they've said "we don't have any of those so we aren't worried about it."  Me: "Really, how do you handle mass market paperbacks and magazines?"  The answer varies but sometimes it's "Oh, I didn't think about those."
+
+```sql
+rhamby=# \d action.non_cataloged_circulation
+                                       Table "action.non_cataloged_circulation"
+  Column   |           Type           |                                   Modifiers                                   
+-----------+--------------------------+-------------------------------------------------------------------------------
+ id        | integer                  | not null default nextval('action.non_cataloged_circulation_id_seq'::regclass)
+ patron    | integer                  | not null
+ staff     | integer                  | not null
+ circ_lib  | integer                  | not null
+ item_type | integer                  | not null
+ circ_time | timestamp with time zone | not null default now()
+```
+
+Now come our two in house use tables.  In house use is not heavily used by many libraries but I would argue is a form of circulation.  The first one, the stock in\_house\_use table records in house use with cataloged copies while the second non\_cat\_in\_house\_use records use of non-cataloged items.  
+
+``` 
+rhamby=# \d action.in_house_use
+                                      Table "action.in_house_use"
+  Column  |           Type           |                            Modifiers                             
+----------+--------------------------+------------------------------------------------------------------
+ id       | integer                  | not null default nextval('action.in_house_use_id_seq'::regclass)
+ item     | bigint                   | not null
+ staff    | integer                  | not null
+ org_unit | integer                  | not null
+ use_time | timestamp with time zone | not null default now()
+
+rhamby=# \d action.non_cat_in_house_use
+                                       Table "action.non_cat_in_house_use"
+  Column   |           Type           |                                Modifiers                                 
+-----------+--------------------------+--------------------------------------------------------------------------
+ id        | integer                  | not null default nextval('action.non_cat_in_house_use_id_seq'::regclass)
+ item_type | bigint                   | not null
+ staff     | integer                  | not null
+ org_unit  | integer                  | not null
+ use_time  | timestamp with time zone | not null default now()
+```
+
+From here we are going to talk about views instead of tables, basically database stored reports of tables rather than tables themeslves.  Let's start with action.all\_circulation.  It is often pointed out as the best table to get an accurate report of your circulations from.  And that isn't bad advice but with some caveats.  It is actually pretty far from complete.  This is cleaned up but the report looks like this:
+
+```sql
+SELECT aged_circulation.id,
+...
+FROM action.aged_circulation
+UNION ALL
+SELECT DISTINCT circ.id,
+...
+FROM action.circulation circ
+...
+```
+
+So what all\_circulation really does is just combine action.circulation and action.aged\_circulation but excludes non-cataloged circulations and in house uses.  It also tries to keep all data even where it varies unlike action.all\_circulation_slim which is the same thing but trims it down slightly to common fields though the rows from the aged circulation table will have NULL for usr.
+
+The view action.all\_circulation\_combined\_types is more comprehensive.  Because many of the tables it pull from are very different it doesn't give as much detail but if you are looking for a count all\_circulation\_combined\_types will give you numbers from all five circulation types and give you a field that lets you know which kind of circ each was.  So, if you're looking to do just a count, definitely use this view.
+
+```sql
+SELECT acirc.id,
+...
+'regular_circ'::text AS circ_type
+FROM action.circulation acirc,
+...
+WHERE acirc.target_copy = ac_acirc.id
+UNION ALL
+SELECT ancc.id::bigint AS id,
+...
+'non-cat_circ'::text AS circ_type
+FROM action.non_cataloged_circulation ancc,
+...
+UNION ALL
+SELECT aihu.id::bigint AS id,
+...
+'in-house_use'::text AS circ_type
+FROM action.in_house_use aihu,
+...
+UNION ALL
+SELECT ancihu.id::bigint AS id,
+...
+'non-cat_circ'::text AS circ_type
+FROM action.non_cat_in_house_use ancihu,
+...
+UNION ALL
+SELECT aacirc.id,
+...
+'aged_circ'::text AS circ_type
+FROM action.aged_circulation aacirc,
+....
+```
+
+The view action.billable\_circulations is pretty straightforward, it is all circulations that may still be billed.  It is defined like this...
+
+```sql
+SELECT circulation.id,
+...
+FROM action.circulation
+WHERE circulation.xact_finish IS NULL;
+```
+
+Note that this does not mean they have bills. Some probably do but the circulation hasn't closed yet so they may get bills still.  This will include by definition everything not checked in yet as well as anything with outstanding bills and other niche cases.  This does exclude the other tables because once a circulation is aged it is not billable anymore (and only closed circs are aged) and others either have no user or are not tracked item by item and therefore do not have the fine rules used for standard circulations applied.
+
+The final view, action.open\_circulation is another minor variation on action.circulation and like billable_\circulations could be accomplished by just applying some filters to the circulations table/data source.  This is a smaller set than billable circulations as it is only those that have not been checked in yet whether they are due or not.
+
+```sql
+SELECT circulation.id,
+...
+FROM action.circulation
+WHERE circulation.checkin_time IS NULL
+ORDER BY circulation.due_date;
+```
+
+Next week we will do a few reports to show some useful circulation reports.
+
