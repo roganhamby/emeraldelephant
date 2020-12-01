@@ -18,6 +18,7 @@ Quick links for posts:
 * [Do the Bibs Match the Copies](#dotheymatch) 2020-10-09
 * [Circulation Basics, Action.Circulation](#circbasics1) 2020-10-19
 * [Circulation Basics, Tables and Views](#circbasics2) 2020-10-25
+* [Circulation Basics, Reports](#circbasics2) 2020-11-30
 
 ### <a name="grokkingbills"></a> Grokking the Relationship Between Transactions and Bills
 
@@ -841,4 +842,79 @@ ORDER BY circulation.due_date;
 ```
 
 Next week we will do a few reports to show some useful circulation reports.
+
+### <a name="circbasics3"></a> Circbasics: A Few Simple Reports
+
+It has been a while since I last updated but we had Turkey day and I've been busy but I said I would do some circulation queries and here we are.  
+
+Let us imagine that you want to count circulations that began during a given date range, say a fiscal year:
+
+```sql
+SELECT COUNT(*) FROM action.circulation WHERE DATE(xact_start) BETWEEN '2019-07-01' AND '2020-06-30';
+```
+
+ But this has a problem, it only checks circulations, not non-cataloged circulations, not in house use and not aged circulations so let's be a bit more comprehensive and use action.all_circulation_combined_types.  It is a view but we can use it the same way we do a table. 
+
+```sql
+SELECT COUNT(*) FROM action.all_circulation_combined_types WHERE DATE(xact_start) BETWEEN '2019-07-01' AND '2020-06-30';
+```
+
+Now let's get a bit more detail.  Perhaps we want a break down by branches.  We can just add the circ\_lib like this:
+
+```sql
+SELECT COUNT(*), circ_lib FROM action.all_circulation_combined_types WHERE DATE(xact_start) BETWEEN '2019-07-01' AND '2020-06-30' GROUP BY 2;
+```
+
+but how about we actually link to the actor.org\_unit table so that we can get the library names instead and make it a little prettier.  The first thing is that since I'm adding a second source I'm going to make aliases to make referencing them easier.  The first version here is functionally the same as above but formatted a bit and with aliases.
+
+```sql
+SELECT COUNT(acct.*), acct.circ_lib 
+FROM action.all_circulation_combined_types acct
+WHERE DATE(acct.xact_start) BETWEEN '2019-07-01' AND '2020-06-30' GROUP BY 2;
+```
+
+Now let's change that circ\_lib to the library name by joining to actor.org_unit and use it's name field.
+
+```sql
+SELECT COUNT(acct.*), aou.name 
+FROM action.all_circulation_combined_types acct
+JOIN actor.org_unit aou ON aou.id = acct.circ_lib 
+WHERE DATE(acct.xact_start) BETWEEN '2019-07-01' AND '2020-06-30' GROUP BY 2;
+```
+
+There we go, yay!  Now we are going to both expand and restrict it.  Let us imagine we are in a consortium and we only want a subgroup of libaries.  We are going to restrict the libraries shown to all the branches that are children of a certain one using the Evergreen descendants function.
+
+```sql
+SELECT COUNT(acct.*), aou.name 
+FROM action.all_circulation_combined_types acct
+JOIN actor.org_unit aou ON aou.id = acct.circ_lib 
+WHERE DATE(acct.xact_start) BETWEEN '2019-07-01' AND '2020-06-30' 
+AND acct.circ_lib IN (SELECT id FROM actor.org_unit_descendants((SELECT id FROM actor.org_unit WHERE shortname = 'DCL')))
+GROUP BY 2;
+```
+
+Note that we are using subselects to get values used in another query.  In one we have to use brackets () inside brackets because the innermost ones are wrapping around the value while the outer ones are for the function actor.org\_unit\_descendants.  We are nearly there.  Now we are going to find out what kind of circulations these are by adding circ\_type to the select list and chaging the group by to columns 2 and 3 instead of just 2.
+
+```sql
+SELECT COUNT(acct.*), acct.circ_type, aou.name 
+FROM action.all_circulation_combined_types acct
+JOIN actor.org_unit aou ON aou.id = acct.circ_lib 
+WHERE DATE(acct.xact_start) BETWEEN '2019-07-01' AND '2020-06-30' 
+AND acct.circ_lib IN (SELECT id FROM actor.org_unit_descendants((SELECT id FROM actor.org_unit WHERE shortname = 'DCL')))
+GROUP BY 2, 3;
+```
+
+count  |  circ_type   |                 name                 
+--------+--------------+--------------------------------------
+   508 | in-house_use | Innsmouth - Bookmobile
+  6390 | in-house_use | Innsmouth - Ogunquit Main Library
+ 11385 | in-house_use | Innsmouth - Lighthouse Point Branch
+     1 | in-house_use | Innsmouth Township Library System
+ 12587 | regular_circ | Innsmouth - Bookmobile
+ 45813 | regular_circ | Innsmouth - Ogunquit Main Library
+393197 | regular_circ | Innsmouth - Lighthouse Point Branch
+    45 | regular_circ | Innsmouth Township Library System
+
+
+That is a very basic and comprehensive circulation report.  What it lacks is detail.  From here the challenge is that this view combines different sources with different data definitions creating challenges for things like copy level information.  If the view had an optional copy level field it would be easier but it doesn't. There are ways to bring that information into a single report but at that point you have to ask yourself - do you really need one report to rule them all or would you be better off with several more specialized reports tailored to your purpose?
 
