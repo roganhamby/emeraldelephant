@@ -889,7 +889,7 @@ SELECT COUNT(acct.*), aou.name
 FROM action.all_circulation_combined_types acct
 JOIN actor.org_unit aou ON aou.id = acct.circ_lib 
 WHERE DATE(acct.xact_start) BETWEEN '2019-07-01' AND '2020-06-30' 
-AND acct.circ_lib IN (SELECT id FROM actor.org_unit_descendants((SELECT id FROM actor.org_unit WHERE shortname = 'DCL')))
+AND acct.circ_lib IN (SELECT id FROM actor.org_unit_descendants((SELECT id FROM actor.org_unit WHERE shortname = 'INN')))
 GROUP BY 2;
 ```
 
@@ -900,7 +900,7 @@ SELECT COUNT(acct.*), acct.circ_type, aou.name
 FROM action.all_circulation_combined_types acct
 JOIN actor.org_unit aou ON aou.id = acct.circ_lib 
 WHERE DATE(acct.xact_start) BETWEEN '2019-07-01' AND '2020-06-30' 
-AND acct.circ_lib IN (SELECT id FROM actor.org_unit_descendants((SELECT id FROM actor.org_unit WHERE shortname = 'DCL')))
+AND acct.circ_lib IN (SELECT id FROM actor.org_unit_descendants((SELECT id FROM actor.org_unit WHERE shortname = 'INN')))
 GROUP BY 2, 3;
 ```
 ```
