@@ -903,7 +903,7 @@ WHERE DATE(acct.xact_start) BETWEEN '2019-07-01' AND '2020-06-30'
 AND acct.circ_lib IN (SELECT id FROM actor.org_unit_descendants((SELECT id FROM actor.org_unit WHERE shortname = 'DCL')))
 GROUP BY 2, 3;
 ```
-
+```
 count  |  circ_type   |                 name                 
 --------+--------------+--------------------------------------
    508 | in-house_use | Innsmouth - Bookmobile
@@ -914,7 +914,7 @@ count  |  circ_type   |                 name
  45813 | regular_circ | Innsmouth - Ogunquit Main Library
 393197 | regular_circ | Innsmouth - Lighthouse Point Branch
     45 | regular_circ | Innsmouth Township Library System
-
+```
 
 That is a very basic and comprehensive circulation report.  What it lacks is detail.  From here the challenge is that this view combines different sources with different data definitions creating challenges for things like copy level information.  If the view had an optional copy level field it would be easier but it doesn't. There are ways to bring that information into a single report but at that point you have to ask yourself - do you really need one report to rule them all or would you be better off with several more specialized reports tailored to your purpose?
 
