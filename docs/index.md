@@ -20,6 +20,7 @@ Quick links for posts:
 * [Circulation Basics, Tables and Views](#circbasics2) 2020-10-25
 * [Circulation Basics, Reports](#circbasics2) 2020-11-30
 * [Asking Discrete Questions 1 of 2](#discrete1) 2020-12-28
+* [Asking Discrete Questions 2 of 2](#discrete2) 2020-12-31
 
 ### <a name="grokkingbills"></a> Grokking the Relationship Between Transactions and Bills
 
@@ -1049,4 +1050,70 @@ id       |    usrname     |         title          | stat_cat_text
 (10 rows)
 ```
 
-Problem - you're still getting multiple rows from stat cat entry where you really only want one.  So, when I present solutions in the next post I am going to break out the query logic for statistical categories into a discrete source from the circulation rows to remove the duplicate rows and show three different ways to do it. 
+Problem - you're still getting multiple rows from stat cat entry where you really only want one.  So, when I present solutions in the next post I am going to break out the query logic for statistical categories into a discrete source from the circulation rows to remove the duplicate rows and show three different ways to do it.
+
+### <a name="discrete2"></a> Asking Discrete Questions part 12of 2
+
+We are almost in 2021 but we have one thing to wrap up here first.  We left off in a minor conundrum so let's fix that.
+
+The first thing to do is separate out the data we want on patron statistical categories into a separate table.  Here we create a TEMP table which means it only exists for the duration of our session.  I still drop it afterwards because I like to keep it tidy.  I do a left join to the table which means that each circulation will still show but we only get the entries for the 'Blue' ones.  This has the effect of both providing the data source and the filtering of the case while only giving one row per circulation.  
+
+```sql
+CREATE TEMP TABLE stat_cat_stuff AS 
+SELECT * FROM actor.stat_cat_entry_usr_map 
+WHERE stat_cat_entry = 'Blue';
+
+SELECT acirc.id, au.usrname, ssr.title, scs.stat_cat_entry
+FROM actor.usr au 
+JOIN action.circulation acirc ON acirc.usr = au.id 
+JOIN asset.copy acp ON acp.id = acirc.target_copy 
+JOIN asset.call_number acn ON acn.id = acp.call_number 
+JOIN reporter.super_simple_record ssr ON ssr.id = acn.record 
+LEFT JOIN stat_cat_stuff scs ON scs.target_usr = au.id
+WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31' 
+LIMIT 10;
+
+DROP TABLE stat_cat_stuff;
+```
+
+Step two: wash and repeat.  Here we are doing the same thing but instead of moving the logic into a TEMP table we make it into a subquery of the statement in this line:
+
+```sql
+LEFT JOIN (SELECT * FROM actor.stat_cat_entry_usr_map WHERE stat_cat_entry = 'Blue') scs ON scs.target_usr = au.id
+```
+
+and the query:
+
+```sql
+SELECT acirc.id, au.usrname, ssr.title, scs.stat_cat_entry
+FROM actor.usr au 
+JOIN action.circulation acirc ON acirc.usr = au.id 
+JOIN asset.copy acp ON acp.id = acirc.target_copy 
+JOIN asset.call_number acn ON acn.id = acp.call_number 
+JOIN reporter.super_simple_record ssr ON ssr.id = acn.record 
+LEFT JOIN (SELECT * FROM actor.stat_cat_entry_usr_map WHERE stat_cat_entry = 'Blue') scs ON scs.target_usr = au.id
+WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31' 
+LIMIT 10;
+```
+
+What is the functional difference?  On this scale, none that matters.  I do like keep it in one statement but it is a bit hard to read.  So, why not have it both ways?  We can, with a 'WITH' statement, also known as a CTE or Common Table Expression.  
+
+```sql
+WITH stat_cat_stuff AS (
+  SELECT * FROM actor.stat_cat_entry_usr_map 
+  WHERE stat_cat_entry = 'Blue'
+) 
+SELECT acirc.id, au.usrname, ssr.title, scs.stat_cat_entry
+FROM actor.usr au 
+JOIN action.circulation acirc ON acirc.usr = au.id 
+JOIN asset.copy acp ON acp.id = acirc.target_copy 
+JOIN asset.call_number acn ON acn.id = acp.call_number 
+JOIN reporter.super_simple_record ssr ON ssr.id = acn.record 
+LEFT JOIN stat_cat_stuff scs ON scs.target_usr = au.id
+WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31' 
+LIMIT 10;
+```
+
+I like CTEs because they allow you to keep queries discrete and tidy, a win/win.
+
+
