@@ -1052,7 +1052,7 @@ id       |    usrname     |         title          | stat_cat_text
 
 Problem - you're still getting multiple rows from stat cat entry where you really only want one.  So, when I present solutions in the next post I am going to break out the query logic for statistical categories into a discrete source from the circulation rows to remove the duplicate rows and show three different ways to do it.
 
-### <a name="discrete2"></a> Asking Discrete Questions part 12of 2
+### <a name="discrete2"></a> Asking Discrete Questions part 2 of 2
 
 We are almost in 2021 but we have one thing to wrap up here first.  We left off in a minor conundrum so let's fix that.
 
