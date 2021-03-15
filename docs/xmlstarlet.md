@@ -59,7 +59,7 @@ If you want it in a file send that there instead of the screen (probably more us
 
 ```
 grep -o -f to_look_for.txt barcode_list_from_bib.txt > found.txt
-rhamby@migrator2:~/data$ wc -l found.txt
+wc -l found.txt
 1064 found.txt
 ```
 
