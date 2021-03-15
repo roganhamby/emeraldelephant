@@ -13,7 +13,7 @@ The general structure of an XMLStarlet invocation is as follows:
 xmlstarlet [action] [parameters for action] file
 ```
 
-A useful tool is to quickly just check to see what the structure of the XML file looks like.  With MARCXML is should be predictable.  
+A useful tool is to quickly just check to see what the structure of the XML file looks like.  With MARCXML it should be predictable.  
 
 ```
 derleth@test:~/data$ xmlstarlet el -u bibs.xml
