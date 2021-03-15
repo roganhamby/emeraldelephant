@@ -94,3 +94,4 @@ So in summation to understand how transactions connect to circulations those two
 
 Now, paying for those bills, that is a future entry in it's own right.
 
+[![Return to Index](https://raw.githubusercontent.com/roganhamby/emeraldelephant/master/Azzuri_tiny.png)](index.html)
