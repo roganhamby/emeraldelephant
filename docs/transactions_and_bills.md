@@ -1,5 +1,5 @@
 
-[![Index](https://raw.githubusercontent.com/roganhamby/emeraldelephant/master/Azzuri_tiny.png) "Return to Index"]
+[![Return to Index](https://raw.githubusercontent.com/roganhamby/emeraldelephant/master/Azzuri_tiny.png) "Return to Index"]
 
 ### <a name="grokkingbills"></a> Grokking the Relationship Between Transactions and Bills
 
