@@ -5,12 +5,12 @@ Welcome to Emerald Elephants.  The goal of this blog is to demystify some of the
 For those looking for other Evergreen resources:
 
 * [Evergreen WIKI](https://wiki.evergreen-ils.org/doku.php)
-* [Jane Sandberg's posts on Evergreen](https://sandbergja.github.io/tags.html#Evergreen-ref) 
+* [Jane Sandberg's posts on Evergreen](https://sandbergja.github.io/tags.html#Evergreen-ref)
 
 I take questions via the Github issues and via Twitter @roganhamby or email if you can find it (it's not hard).
 
 Quick links for posts:  
-* [Grokking the Relationship Between Transactions and Bills](#grokkingbills) 2020-06-15   
+* [Grokking the Relationship Between Transactions and Bills](transactions_and_bills.md) 2020-06-15   
 * [Paying Off Bills part 1: The Where of It](#payingbills1) 2020-06-30  
 * [Paying Off Bills part 2: The How of It](#payingbills2) 2020-07-12
 * [Ancestors and Descendants](#ancdesc) 2020-08-01
@@ -21,99 +21,7 @@ Quick links for posts:
 * [Circulation Basics, Reports](#circbasics2) 2020-11-30
 * [Asking Discrete Questions 1 of 2](#discrete1) 2020-12-28
 * [Asking Discrete Questions 2 of 2](#discrete2) 2020-12-31
-
-### <a name="grokkingbills"></a> Grokking the Relationship Between Transactions and Bills
-
-"A nickel ain't worth a dime anymore." -- Yogi Berra
-
-A question wasn't directed at me but I was around at the time.  The question was, "so..... are billing IDs the same as circ IDs, and I have just never noticed before, or is that just test server data?"  It is a valid question.  The very nature of how test server is built can lead to co-oincidences in id sequences that are less likely in production data.
-
-My reply: "they are, the circ table is actually a child table of bills."
-
-That's a terse reply and the relationship between circulations and bills is something that is often confusing to database delvers in Evergreen.   Here is a longer answer.  
-
-#### Table Inheritance 
-
-Critical to how the ids are shared is the concept of table inheritance.  When I have taught this concept in classes I have found people sometimes struggle with understanding it so bear with me.  If you feel comfortable with it skip ahead to the heading 'money.billable_xact'.  I think that many who have struggled with the concept of inheritance think 'it has to be more complicated than that.'  But it's not.  How it works is simple, one table is a subset of another.  It works like this, let's say you create a table to represent creatures.  Oh, quick head's up, I'm going to use some SQL to illustrate the point but it's introductory level SQL.  If you're not familiar with it I think just following the meaning of the key terms in English will still get to the point.
-
-```sql
-    CREATE TABLE animals (	
-        name TEXT,
-        age INTEGER
-    );
-
-    CREATE TABLE snakes (
-        poisonous BOOLEAN NOT NULL,
-        length INTEGER 
-    ) INHERITS (animals);
-```
-
-What does this do?  Imagine you have a few million rows to put into the animals table.  Sure, you could put the columns in for the reptiles but then you're wasting a whole bunch of space for all those non-snakes in there.  Plus it would seem a bit odd to have to mark a panda bear as non-poisonous since that column doesn't allow NULL.  At least I'm assuming pandas are non-poisonous.  Let's go with that.
-
-The important thing to understand is that by having table 'snakes' inherit from table 'animals' those columns from 'animals' - name and age are present in snakes as well.  The columns aren't copied but an actual subset so when I do this :
-
-```sql
-    INSERT INTO snakes (name,poisonous) VALUES ('brown burrower',FALSE);
-```
-
-This is what appears if you select from each table respectively:
-
-```sql
-    rhamby=# select * from animals;  
-    name | brown burrower
-    age  |
-
-    rhamby=# select * from snakes; 
-    name      | brown burrower
-    age       |
-    poisonous | f  
-    length    |
-```
-
-And if I update the age on snakes:
-
-```sql
-    rhamby=# update snakes set age = 2 where name = 'brown burrower';
-    UPDATE 1
-
-    rhamby=# select * from animals;
-    name | brown burrower
-    age  | 2
-
-    rhamby=# select * from snakes;
-    name      | brown burrower
-    age       | 2
-    poisonous | f
-    length    |
-```
-
-So, to reiterate one table is a subset of the other with the inherited columns shared between the tables.  All good?  Now, let's head into the trees.
-
-#### money.billable_xact
-
-Let's do a \d+ in Postgres on the action.circulation table.  There is a whole lot of output but the part we want is at the very, very end: 
-
-`Inherits: money.billable_xac`  
-
-If you're thinking 'hey, you were just talking about that' you are clearly a person of discernment and far sight.  The action.circulation table inherits money.billable_xact.  Why?  money.billable_xact has only five columns: id, usr, xact_start, xact_finish, and unrecovered.  All of these are properites of circulations as well, hence why it makes sense for them to be shared columns since any circulation could also have bills.  You could tie them together in other ways but this manner is effecient, simple and elegant.  Since every action.circulation entry needs each of the values in money.billable_xact no resoures are wasted even if a circulation doesn't have a bill.
-
-Now let's look more about how money.billable\_xact relates to bills.  Let us turn our probing to details on money.billable_xact. It has three child tables:
-
-action.circulation  
-booking.reservation  
-money.grocery  
-
-We already knew that action.circulation was a child table.  Bookings are a sort of equivalent to a circulation so that makes sense.  It may not seem as obvious but groceries are an equivalent as well.  Money.grocery is a bit confusing to some folks but the term means miscellaneous here more than looking to fill the pantry.  Since a grocery bill is a miscellaneious bill not attached to a circulation or booking reservation the entry in this table acts as a transaction as well as bill.  So, the common element of all the child tables of money.billable\_xact is that they track transactions and while billable_xact is a jumping off point for any bills associated with transactions.  Money.grocery has that bill built into transactions because it is the most effecient way to do it for those as they are by definition both transaction and bill.  Circulations are divided from their bills since they may not have any.
-
-Finally, let's look at bills.  Groceries are their own bills but everything else is tracked in money.billing.  The money.billing table has a very important column: xact.  This links to money.billable\_xact's id column.   Everytime you have a bill on a circulation it becomes an entry in money.billing and they are all tied together to show they are all bills on that one circulation by connecting back to money.billable_xact.  How does that connect to the circulation?  Because of action.circulation inheriting money.billable\_xact, action.circulation ids are money.billable\_xact ids so when you see the xact value in a money.billing entry - it is also a circulation id or a money.grocery id or a booking.reservation id.  Convenient.
-
-![money.billable_xact and money.billing relationship](https://raw.githubusercontent.com/roganhamby/emeraldelephant/master/images/moneybillablemoneyxact.png)
-
-To illustrate the point let us imagine a book that has been checked out and generated some bills.  I check out a copy of Jonathan Gash's "The Judas Pair" - the very first checkout in this copy of Evergreen.  The causes an entry with id of 1 in money.billable\_xact and an entry into action.circulation which is also id 1 because it inherited money.billable\_xact's.  Once the book goes overdue every day a new entry goes into money.billing and every one has a value of xact that is 1, all linking back to that one entry in money.billable_xact id 1, circulation id 1.  In database terminology the billing xact column is a foreign key linking to billable\_xact.  So, money.billable\_xact's relationship to money.billing is a one to many relationship.  Any future lost fees, lost charges and so on do the same.  Thus, we can have any number of bills, always linking to one table of transactions  with child tables representing their unique needs without any waste of space in the database.
-
-So in summation to understand how transactions connect to circulations those two ideas are critical: how circulations / grocery bills / booking reservations are child tables of money.billable\_xact and the one to many relationship between money.billable\_xact and money.billing.
-
-Now, paying for those bills, that is a future entry in it's own right.
+* [XMLStarlet - Get It Over With](#xmlstarlet) 2021-03-14
 
 ### <a name="payingbills1"></a> Paying Off Bills part 1: The Where of It
 
@@ -121,7 +29,7 @@ The last time I posted I wrote about how bills worked.  I hadn’t planned to wr
 
 “One of our library systems is wanting to do an amnesty project, and clear all bills over 5 yrs old.  Anyone have a script we can start with? Or any gotchas we should know about?”
 
-They aren’t alone.  I’ve done more clearing of bills in the last month than I think I had in the previous five years combined.  There is something in the air with libraries re-opening amidst the COVID-19 pandemic that people want to lower barriers to using the library.  While I certainly don’t celebrate the pandemic, I’m a huge fan of no-fines policies and forgiveness projects so I’ve cheered this on.  And as libraries look at these tasks they are running reports and making decisions.  Voiding a few dozen fines?  The staff client has you covered.  Removing tens or hundreds of thousands?  Uh… let’s talk about scripts for that.  But first, we have to understand how things are laid out. 
+They aren’t alone.  I’ve done more clearing of bills in the last month than I think I had in the previous five years combined.  There is something in the air with libraries re-opening amidst the COVID-19 pandemic that people want to lower barriers to using the library.  While I certainly don’t celebrate the pandemic, I’m a huge fan of no-fines policies and forgiveness projects so I’ve cheered this on.  And as libraries look at these tasks they are running reports and making decisions.  Voiding a few dozen fines?  The staff client has you covered.  Removing tens or hundreds of thousands?  Uh… let’s talk about scripts for that.  But first, we have to understand how things are laid out.
 
 So, we have two components to this: 1) how payments are structured in the database and 2) how to use them to our benefit.  Due to the amount of content, I’m going to break the blog post up into two parts with this first part being how the payments are structured in the database.  Then in my next post, I’ll get into how you can approach doing something with them in the database.
 
@@ -132,11 +40,11 @@ How payments are applied to billings (hint: they're not, mostly)
 
 In part two we will cover:  
 Ways to actually pay the bills off  
-Related concerns with closing transactions 
+Related concerns with closing transactions
 
 Let’s get stuck in.
 
-#### How Bills Are Structured 
+#### How Bills Are Structured
 
 Since I covered this in detail in ‘2020-06-16 Groking the Relationship Between Transactions and Bills’ this will be the expedited version.  The money.billable\_xact table has an id column that is shared with its child tables of money.grocery, action.circulation and booking.reservation.  So, each kind of transaction (grocery, circ, booking) has an id in money.billable\_xact that is used as the connection point for billings.  All of those combined billings is the bill for that circ or whatever.  Think of many days worth of fines in money.billing linking back to one circulation in action.circulation which shares its id with its parent table money.billable_xact.  
 
@@ -144,7 +52,7 @@ Since I covered this in detail in ‘2020-06-16 Groking the Relationship Between
 
 Evergreen’s payment structure is … special.  There have been long-standing discussions about changing it.  However, although it’s inflexible it does work and any awkwardness it has is largely invisible to patrons and staff.  So, I don’t think it’s likely to change soon unless some dev really becomes develops a compulsion and plenty of free time.  
 
-If you do a table listing in the money schema you’ll see ten payment tables: 
+If you do a table listing in the money schema you’ll see ten payment tables:
 
 bnm\_desk\_payment  
 bnm\_payment  
@@ -177,9 +85,9 @@ Then bnm\_desk\_payment has three children of its own: cash_payment, credit_card
 
 So, how are payments applied to billings?  I already hinted at the answer when I said, tongue firmly in cheek, above that they’re not.  And they aren’t.  Remember that the parent table of all billable transactions is money.billable_xact and it’s ‘id’ column is the ‘xact’ referenced by money.payment.
 
-So, if that wasn’t clear: 
+So, if that wasn’t clear:
 
-money.payment.xact = money.billable_xact.id 
+money.payment.xact = money.billable_xact.id
 
 Now, billings exist in the money.billing table.  So, with one exception to mention in a minute, no payments ever reference a specific billing, they only reference the transactions.  So, when you make a credit card payment, a check payment, forgive a fine, and so on you aren’t actually paying off a billing, you are simply applying a payment to offset an amount.  That is why you can have a total bill like this:
 
@@ -206,7 +114,7 @@ Total: $10.13
 
 Note that no billings are removed or closed out in any way and no billings match that $0.37.  Eventually, when the payments equal the billings it is closed out.  However, if you go a penny over you end up with a negative bill where the library now owes the patron (at least in bookkeeping theory - the reality may be quite different).  
 
-Account adjustments are different because they do connect to specific billings and track per billing how much is paid.  One billing can have multiple account adjustments.  These were introduced when the Adjust to Zero function in the staff client was added.  One of the advantages of this is that if you have a negative bill, where more is paid than owed, you can logically zero it out with an account adjustment instead of applying a negative payment.  Really, negative payments don’t make sense, do they? 
+Account adjustments are different because they do connect to specific billings and track per billing how much is paid.  One billing can have multiple account adjustments.  These were introduced when the Adjust to Zero function in the staff client was added.  One of the advantages of this is that if you have a negative bill, where more is paid than owed, you can logically zero it out with an account adjustment instead of applying a negative payment.  Really, negative payments don’t make sense, do they?
 
 But I’m not going to digress on the historical things that have been done to pay bills or bizarre things that could be done still.  Instead, next time we will talk about some best practices script wise as well as provide a peek as to what happens when you do these things in the staff client.  
 
@@ -229,8 +137,8 @@ Voiding a single billing is simple.
 Of course, this makes some big assumptions.  One of those assumptions is that you want to resolve billings and not whole transactions.  Another assumption is that you don’t care about what kind of billing the billing is.  But if you do care …  For example, maybe you want to remove all late fees on a specific circulation but not lost fees and things like that.  You can do that like this:
 
 ```sql
-    UPDATE money.billing 
-    SET voided = TRUE, voider = 1 
+    UPDATE money.billing
+    SET voided = TRUE, voider = 1
     WHERE xact = 123 AND btype = (SELECT id FROM config.billing_type WHERE name = ‘Overdue Materials’);
 ```
 
@@ -245,7 +153,7 @@ However, all of this assumes no payments have been made on the transaction.  You
     xact_finish       | 2011-12-20 15:42:08.144589-05
     total_paid        | 4.00
     last_payment_ts   | 2011-12-20 15:42:08.144589-05
-    last_payment_note | 
+    last_payment_note |
     last_payment_type | credit_card_payment
     total_owed        | 4.20
     last_billing_ts   | 2011-07-17 00:59:59-04
@@ -258,8 +166,8 @@ However, all of this assumes no payments have been made on the transaction.  You
 Here we have a record where all the bills were overdue fines that added up to $4.20.  All but $0.20 were paid on it.  If we did this:
 
 ```sql
-    UPDATE money.billing SET voided = TRUE, voider = 1 
-    WHERE xact = 4 
+    UPDATE money.billing SET voided = TRUE, voider = 1
+    WHERE xact = 4
     AND btype = (SELECT id FROM config.billing_type WHERE name = ‘Overdue Materials’);
 ```
 
@@ -276,7 +184,7 @@ Let’s go back and look at some bill summaries again.
 
 ```sql
     select id, balance_owed from money.billable_xact_summary where id < 10;
-     id | balance_owed 
+     id | balance_owed
     ----+--------------
       4 |         0.20
       5 |         0.00
@@ -289,23 +197,23 @@ With these four bills we have four very different scenarios.  #4 has been partia
 One simple way to handle all of these is :  
 
 ```sql
-INSERT INTO money.forgive_payment (xact, amount, note, amount, amount_collected, accepting_usr) 
-SELECT id, balance_owed * -1, ‘forgiven due to fresh start project’, balance_owed * -1, 1 
-FROM money.billable_xact_summary 
+INSERT INTO money.forgive_payment (xact, amount, note, amount, amount_collected, accepting_usr)
+SELECT id, balance_owed * -1, ‘forgiven due to fresh start project’, balance_owed * -1, 1
+FROM money.billable_xact_summary
 WHERE id < 10;
 ```
 
 Technically this works for all of them but I have two quibbles.  One, it unnecessarily creates a new entry of 0.00 for #5 which can create a lot of junk rows in the database.  So, I would recommend a ‘WHERE balance_woed != 0’ filter for that.  My other issue has to do with a negative balance.  Technically you have made a negative payment to balance a negative bill which from a forensic standpoint is bad accounting.  It works because … it’s math but it’s not pretty.  I would recommend this:
 
 ```sql
-INSERT INTO money.forgive_payment (xact, amount, note, amount, amount_collected, accepting_usr) 
-SELECT id, balance_owed * -1, ‘forgiven due to fresh start project’, balance_owed * -1, 1 
+INSERT INTO money.forgive_payment (xact, amount, note, amount, amount_collected, accepting_usr)
+SELECT id, balance_owed * -1, ‘forgiven due to fresh start project’, balance_owed * -1, 1
 FROM money.billable_xact_summary WHERE id < 10 AND balance_owed > 0;
 ```
 
 This will avoid both zero amounts and ugly negative payments.  Now, here I used the forgive payments because the context is this project but you could do any kind of payments like this though honestly, it’s hard to imagine situations where you would want to do bulk payments of other kinds in the database.  
 
-#### Putting it Into Practice 
+#### Putting it Into Practice
 
 Let’s take what we’ve talked about so far and put it into some context.  Let us start by creating a schema to hold our work in.  
 
@@ -318,38 +226,38 @@ Let us imagine we are working with a library that want to remove all past circul
 ```sql
 DROP TABLE IF EXISTS fine_cleanup.loans_to_cleanup;
 CREATE TABLE fine_cleanup.nuke_bills AS
-SELECT mb.id AS xact_id, mbxs.balance_owed, mbxs.total_paid 
-FROM money.billable_xact mb 
-JOIN money.billable_xact_summary mbxs ON mbxs.id = mb.id 
+SELECT mb.id AS xact_id, mbxs.balance_owed, mbxs.total_paid
+FROM money.billable_xact mb
+JOIN money.billable_xact_summary mbxs ON mbxs.id = mb.id
 WHERE mb.xact_finish IS NULL AND mbxs.balance_owed != 0;
 ```
 
 Depending on the size of your data this stage could take a while since you’re accessing large tables and views but that is why it’s important to filter out the ones where the transactions have been closed already by looking at the xact_finish column.  On a smaller system you could grab all of them and filter later but on a large one … yeah, filter upfront.
 
-Now, let’s get rid of the ones that are attached to items that are now LOST.  Of course, the library should be warned that the fines on a given account may have come about from a previous circulation to when the item was lost but in this case let’s imagine they say that’s fine, they will get a report at the end and handle those by hand.  You might also be able to do some filtering by item status changed time versus transaction start but for this purpose we will keep it simple. 
+Now, let’s get rid of the ones that are attached to items that are now LOST.  Of course, the library should be warned that the fines on a given account may have come about from a previous circulation to when the item was lost but in this case let’s imagine they say that’s fine, they will get a report at the end and handle those by hand.  You might also be able to do some filtering by item status changed time versus transaction start but for this purpose we will keep it simple.
 
 Why not build our table off circs to begin with?  Because we wanted to get groceries and booking bills as well which using money.billable_xact gives us.  
 
 ```sql
-DELETE FROM fine_cleanup.nuke_bills 
+DELETE FROM fine_cleanup.nuke_bills
 WHERE xact_id IN (SELECT id FROM action.circulation WHERE target_copy IN (SELECT id FROM asset.copy WHERE status = (SELECT id FROM config.copy_status WHERE name = ‘Lost’)));
 ```
 
-First, let’s void the bills that have no payments: 
+First, let’s void the bills that have no payments:
 
 ```sql
-UPDATE money.billing 
-SET voided = TRUE, voider = 1 
-WHERE xact IN (SELECT xact_id FROM fine_cleanup.nuke_bills 
+UPDATE money.billing
+SET voided = TRUE, voider = 1
+WHERE xact IN (SELECT xact_id FROM fine_cleanup.nuke_bills
 WHERE balance_owed > 0 AND total_paid = 0);
 ```
 
 This is like the previous voiding statement but we are now grabbing everything from the table we made listing bills and saying only give them to be if the balance is postiive and no payments have been made.  We will use a forgive payment to take care of those partial bills like this:
 
 ```sql
-    INSERT INTO money.forgive_payment (xact, amount, note, amount, amount_collected, accepting_usr) 
-    SELECT id, balance_owed * -1, ‘forgiven due to fresh start project’, balance_owed * -1, 1 
-    FROM fine_cleanup.nuke_bills 
+    INSERT INTO money.forgive_payment (xact, amount, note, amount, amount_collected, accepting_usr)
+    SELECT id, balance_owed * -1, ‘forgiven due to fresh start project’, balance_owed * -1, 1
+    FROM fine_cleanup.nuke_bills
     WHERE balance_owed > 0 AND total_paid > 0;
 ```
 
@@ -359,7 +267,7 @@ At this point you could be done if you’d changed that last line to :
 
 Then the negative balances would be caught too but you would have those ugly negative payments.  That brings us to adjusting bills …
 
-#### Adjusting Bills 
+#### Adjusting Bills
 
 Adjusting Bills works great for negative balances since it’s not a payment but an adjustment and targets specific billings.  So, why not use them for everything?  You can but I find they are a lot more complicated for both front line staff and back end people to follow if they have to look at an account in the future and figure out what happened.  Thus, I reserve them for when I need them.  Now there are three ways you can adjust them.
 
@@ -375,22 +283,22 @@ I’m probably going to want to sue some logic that is bit beyond what a single 
         transaction_id   BIGINT;
         billing_id BIGINT;
         descending_payment         NUMERIC;
-        bill_row                   money.billing%ROWTYPE; 
+        bill_row                   money.billing%ROWTYPE;
         bxs                        money.billable_xact_summary%ROWTYPE;
         transaction_amount_owed    NUMERIC DEFAULT 0.0;
     BEGIN
-        -- grab transactions one at a time that match our criteria 
+        -- grab transactions one at a time that match our criteria
         FOR transaction_id IN SELECT xact_id FROM  fine_cleanup.nuke_bills WHERE balance_owed < 0 LOOP
         -- we grab the grow of data and set a descending_payment variable which
-        -- we will use to track to see how much is left to remove at any point 
+        -- we will use to track to see how much is left to remove at any point
             SELECT * FROM money.billable_xact_summary WHERE id = transaction_id INTO bxs;
             descending_payment := bxs.total_paid;
             transaction_amount_owed := bxs.balance_owed;
             -- now loop through each billing in the transaction
            FOR billing_id IN SELECT id FROM money.billing WHERE xact = transaction_id AND voided = FALSE ORDER BY amount DESC LOOP
-                -- grab the info about the billing 
+                -- grab the info about the billing
                 SELECT * FROM money.billing WHERE id = billing_id INTO bill_row;
-                -- beyond this point we are tracking how much is owed total and and making billing by billing adjustments 
+                -- beyond this point we are tracking how much is owed total and and making billing by billing adjustments
                 IF bill_row.amount = descending_payment THEN
                     descending_payment := 0;
                 ELSIF bill_row.amount > descending_payment THEN
@@ -411,7 +319,7 @@ I’m probably going to want to sue some logic that is bit beyond what a single 
 
 Note that the above code is adapted from something else I’ve done and untested.  I’m providing it as an illustration of the logic involved.  Indeed, to return to an above point, if you’re talking about dozens of these, giving a report to circ staff to adjust to zero the negative balances is perfectly legitimate.  
 
-#### Finishing the Transactions 
+#### Finishing the Transactions
 
 After the actual billings are paid out there are other things you will want to think about.  Setting xact\_finish should definitely be part of your scripts.  Normally when bills are paid off the staff client takes care of that but since you’re making payments and voiding things manually you will want to close the transactions out or they will appear as open in the staff client and confuse staff.  You can do that by adjusting the xact\_finish of money.billable\_xact and setting it to NOW().
 
@@ -462,7 +370,7 @@ For example,
 
 ```sql
 rhamby=# SELECT 1, parent_ou, shortname FROM actor.org_unit_descendants(101);
-  ?column? | parent_ou | shortname 
+  ?column? | parent_ou | shortname
  ----------+-----------+-----------
          1 |         1 | BOWERY
          1 |       101 | MARTHA
@@ -480,7 +388,7 @@ You can do the same with permission groups, permission.grp_descendants.  For exa
 
 ```sql
  rhamby=# select id, name, parent from permission.grp_descendants(3);
-  id |            name            | parent 
+  id |            name            | parent
  ----+----------------------------+--------
    3 | Staff                      |      1
    4 | Catalogers                 |      3
@@ -518,15 +426,15 @@ If you need an illustration between the two go to a good sized data base and sea
 SELECT * FROM asset.copy;  
 ```
 
-You might be waiting a good minute or so but you’ll probably get a response fairly quickly even with a huge table.  By the way, do this on a test system.  Seriously. 
+You might be waiting a good minute or so but you’ll probably get a response fairly quickly even with a huge table.  By the way, do this on a test system.  Seriously.
 
-But if you try … 
+But if you try …
 
 ```sql
 SELECT * FROM money.usr_summary;
 ```
 
-On a small little test system you will get a quick response but on a large system you’re in for a world of wait.  Why?   Because what you’ve actually just done is executed this query: 
+On a small little test system you will get a quick response but on a large system you’re in for a world of wait.  Why?   Because what you’ve actually just done is executed this query:
 
 ```sql
 SELECT materialized_billable_xact_summary.usr,
@@ -537,9 +445,9 @@ SELECT materialized_billable_xact_summary.usr,
     GROUP BY materialized_billable_xact_summary.usr;
 ```
 
-You can get that in psql by doing 
+You can get that in psql by doing
 
-    \d+ money.usr_summary 
+    \d+ money.usr_summary
 
 which will show the query behind any view.
 
@@ -547,7 +455,7 @@ However, specifying a value means you’re narrowing it down.
 
 ```sql
 rhamby=# select * from money.usr_summary where usr = 12345;
-   usr   | total_paid | total_owed | balance_owed 
+   usr   | total_paid | total_owed | balance_owed
 ---------+------------+------------+--------------
   12345  |      19.25 |      21.50 |         2.25
 (1 row)
@@ -608,7 +516,7 @@ The question was simple.
 
 Aside from pulling the materials off the shelf there isn't a way to tell for absolute sure but there are often clues in the circ modifier, call number label and shelving location of the items.  So doing this has three parts, 1) identifying the bib records by search / icon format, 2) pulling in all the copy level information and 3) analyzing the copy level information.  Number 3 really depends on the circs mods, shelving locations and call numbers of your library so I'm going to cover 1 & 2 here.
 
-First let's look at a table called config.coded_value_map, there is a lot of important stuff in there but for our pupose we are going to focus on the search formats.  These are the things you select when you go to advanced search and say "I only want want mountain climbing videos".  Howe they are defined is elsewhere but for our purpose the fact that this is where the ids and codes are is enough. 
+First let's look at a table called config.coded_value_map, there is a lot of important stuff in there but for our pupose we are going to focus on the search formats.  These are the things you select when you go to advanced search and say "I only want want mountain climbing videos".  Howe they are defined is elsewhere but for our purpose the fact that this is where the ids and codes are is enough.
 
 ```sql
 rhamby=# select id, ctype, code, value from config.coded_value_map where ctype ~* 'search';
@@ -653,7 +561,7 @@ This seems impenetrable but it's really not.  And for us since we are interested
 CREATE TABLE list AS SELECT source from metabib.record_attr_vector_list where 627 = ANY(vlist);
 ```
 
-There are a number of places where bib values aren't removed when a bib is flagged deleted so it's not a bad idea to remove them from out list: 
+There are a number of places where bib values aren't removed when a bib is flagged deleted so it's not a bad idea to remove them from out list:
 
 ```sql
 DELETE FROM list WHERE source IN (SELECT id FROM biblio.record_entry WHERE deleted);
@@ -663,9 +571,9 @@ Now Let us get the information!
 
 ```sql
 CREATE TABLE copies AS SELECT acp.id AS acp_ip, acp.barcode, acp.circ_modifier, acn.id AS acn_id, acn.label AS call_number, acl.name AS location, acn.record
-FROM asset.copy acp 
+FROM asset.copy acp
 JOIN asset.call_number acn on acn.id = acp.call_number
-JOIN asset.copy_location acl on acl.id = acp.location 
+JOIN asset.copy_location acl on acl.id = acp.location
 WHERE NOT acp.deleted
 AND acn.record IN (SELECT source FROM list);
 
@@ -688,33 +596,33 @@ Today someone asked on the general Evergreen list about circulation reports.  Th
 
 I'm going to do this as multiple posts so the first one will be just looking at the core circulation table, action.circulation.
 
-There are a lot of potentially useful bits of information in here.  Le'ts start with: 
+There are a lot of potentially useful bits of information in here.  Le'ts start with:
 
-    parent_circ            | bigint                   | 
+    parent_circ            | bigint                   |
     renewal_remaining      | integer                  | not null
- 
+
  Many ILSes track renewals by a value on a circulation table and some poeple mistak the renewal_remaining as that.  It is not.  In Evergreen it simply tracks what it says.  Each renewal is its own entry in action.circualation and the previous circulation is linked as parent_circ.    So if your original circulation is id 9001 parent_\circ NULL renwals\_remaining 2, renewal one might be id 9005 parent\_circ 9001 renewals\_remaining 1.
- 
+
     xact_start             | timestamp with time zone | not null default now()
     create_time            | timestamp with time zone | not null default now()
 
 A lot of people consider these redundant and at first glance they are.  Indeed, the vast majority of the time they are but there are important cases where they are not.  Create time is when the record is created while xact_start is the beginning of the transaction.  In a normal circ they are the same but in migrated or offline transactions they will be different.
 
-    xact_finish            | timestamp with time zone | 
-    stop_fines_time        | timestamp with time zone | 
-    checkin_time           | timestamp with time zone | 
-    checkin_scan_time      | timestamp with time zone | 
+    xact_finish            | timestamp with time zone |
+    stop_fines_time        | timestamp with time zone |
+    checkin_time           | timestamp with time zone |
+    checkin_scan_time      | timestamp with time zone |
 
 Let's break these down.  xact\_finish has nothing to do with when the material is returned to the library, it marks the end of the circulation as a billable event, or when the bills (if any) are resolved.  The stop\_fines\_time is simply when fines stop potentially accumulating, either because it was checked in (perhaps without any bills), it hits max fines or whatever.  The checkin_time is when it's _considered_ to be checked in, perhaps due to a checkin modifier or something.  The checkin\_scan\_time is when it was actually scanned in though.
 
     copy_location          | integer                  | not null default 1
- 
+
  This is unreliable if you have an older Evergreen system with old circulations.  This captures the shelving location at the time of circulation so if you check out DVDs from a NEW DVDS shelving location and they are later moved to NO ONE CARES ANYMORE DVDS you can see how they circulated then.  However, this when this was added there was no way to know what the shelving location was for items in existing circs so they were set to 1 or Stacks.
- 
+
     circ_lib               | integer                  | not null
-  
+
   This one creates a bit of confusion because there is also a circ\_lib on asset.copy.  The difference is pretty simple.  circ\_lib on asset.copy has nothing to do with where an item actually circulates, it has to do with being the field that the circulation matrix refers to in the copy_circ_lib field.  So, in theory it refers to circulating library but it's confusing because a circulation policy may not use it at all so the circulating library may be irrelevant to how it actually circulates.  Indeed, in the asset.copy it really refers to where the item is circulating from.  My opinion is that it should probably be called something like home_lib but that ship has sailed long ago.  The circ\_lib field on action.circulation though - that is where the item actually circulated.
-  
+
 ### <a name="circbasics2"></a> Basics of Circulation Reports part 2, Tables and Views
 
 If you go in the reporter and look at circulation data sources it is easy to feel overwhelmed.  There are a bunch of sources and it often isn't clear what is a table and what is a view.  So, today in part two of reporting on circulations we will quickly go through the actual tables that store circulation data and the views that just report it.  The first one we went over in more detail last week, action.circulation.  I don't need to go into it more except to say that when I refer to a circulation like data source I'm going to be talking about one that mostly share the same columns as action.circulaton.  
@@ -725,10 +633,10 @@ Adjacent action.emergency\_closing\_circulation and action.usr\_circ\_history.  
 
 ```sql
          Column         |           Type           |       Modifiers        
- usr_post_code          | text                     | 
+ usr_post_code          | text                     |
  usr_home_ou            | integer                  | not null
  usr_profile            | integer                  | not null
- usr_birth_year         | integer                  | 
+ usr_birth_year         | integer                  |
 ```
 
 Statistically you can actually de-anonymize many transactions with birth year and postal code.  There is a bug here for that:  https://bugs.launchpad.net/evergreen/+bug/1861239 and a patch I supplied for allowing libraries to turn off the collection of one or the other.  It's currently in that discussion limbo stage that bugs sometimes fall into.  My opinions are on the bug if anyone is curious.
@@ -750,7 +658,7 @@ rhamby=# \d action.non_cataloged_circulation
 
 Now come our two in house use tables.  In house use is not heavily used by many libraries but I would argue is a form of circulation.  The first one, the stock in\_house\_use table records in house use with cataloged copies while the second non\_cat\_in\_house\_use records use of non-cataloged items.  
 
-``` 
+```
 rhamby=# \d action.in_house_use
                                       Table "action.in_house_use"
   Column  |           Type           |                            Modifiers                             
@@ -855,7 +763,7 @@ Let us imagine that you want to count circulations that began during a given dat
 SELECT COUNT(*) FROM action.circulation WHERE DATE(xact_start) BETWEEN '2019-07-01' AND '2020-06-30';
 ```
 
- But this has a problem, it only checks circulations, not non-cataloged circulations, not in house use and not aged circulations so let's be a bit more comprehensive and use action.all_circulation_combined_types.  It is a view but we can use it the same way we do a table. 
+ But this has a problem, it only checks circulations, not non-cataloged circulations, not in house use and not aged circulations so let's be a bit more comprehensive and use action.all_circulation_combined_types.  It is a view but we can use it the same way we do a table.
 
 ```sql
 SELECT COUNT(*) FROM action.all_circulation_combined_types WHERE DATE(xact_start) BETWEEN '2019-07-01' AND '2020-06-30';
@@ -870,7 +778,7 @@ SELECT COUNT(*), circ_lib FROM action.all_circulation_combined_types WHERE DATE(
 but how about we actually link to the actor.org\_unit table so that we can get the library names instead and make it a little prettier.  The first thing is that since I'm adding a second source I'm going to make aliases to make referencing them easier.  The first version here is functionally the same as above but formatted a bit and with aliases.
 
 ```sql
-SELECT COUNT(acct.*), acct.circ_lib 
+SELECT COUNT(acct.*), acct.circ_lib
 FROM action.all_circulation_combined_types acct
 WHERE DATE(acct.xact_start) BETWEEN '2019-07-01' AND '2020-06-30' GROUP BY 2;
 ```
@@ -878,19 +786,19 @@ WHERE DATE(acct.xact_start) BETWEEN '2019-07-01' AND '2020-06-30' GROUP BY 2;
 Now let's change that circ\_lib to the library name by joining to actor.org_unit and use it's name field.
 
 ```sql
-SELECT COUNT(acct.*), aou.name 
+SELECT COUNT(acct.*), aou.name
 FROM action.all_circulation_combined_types acct
-JOIN actor.org_unit aou ON aou.id = acct.circ_lib 
+JOIN actor.org_unit aou ON aou.id = acct.circ_lib
 WHERE DATE(acct.xact_start) BETWEEN '2019-07-01' AND '2020-06-30' GROUP BY 2;
 ```
 
 There we go, yay!  Now we are going to both expand and restrict it.  Let us imagine we are in a consortium and we only want a subgroup of libaries.  We are going to restrict the libraries shown to all the branches that are children of a certain one using the Evergreen descendants function.
 
 ```sql
-SELECT COUNT(acct.*), aou.name 
+SELECT COUNT(acct.*), aou.name
 FROM action.all_circulation_combined_types acct
-JOIN actor.org_unit aou ON aou.id = acct.circ_lib 
-WHERE DATE(acct.xact_start) BETWEEN '2019-07-01' AND '2020-06-30' 
+JOIN actor.org_unit aou ON aou.id = acct.circ_lib
+WHERE DATE(acct.xact_start) BETWEEN '2019-07-01' AND '2020-06-30'
 AND acct.circ_lib IN (SELECT id FROM actor.org_unit_descendants((SELECT id FROM actor.org_unit WHERE shortname = 'INN')))
 GROUP BY 2;
 ```
@@ -898,10 +806,10 @@ GROUP BY 2;
 Note that we are using subselects to get values used in another query.  In one we have to use brackets () inside brackets because the innermost ones are wrapping around the value while the outer ones are for the function actor.org\_unit\_descendants.  We are nearly there.  Now we are going to find out what kind of circulations these are by adding circ\_type to the select list and chaging the group by to columns 2 and 3 instead of just 2.
 
 ```sql
-SELECT COUNT(acct.*), acct.circ_type, aou.name 
+SELECT COUNT(acct.*), acct.circ_type, aou.name
 FROM action.all_circulation_combined_types acct
-JOIN actor.org_unit aou ON aou.id = acct.circ_lib 
-WHERE DATE(acct.xact_start) BETWEEN '2019-07-01' AND '2020-06-30' 
+JOIN actor.org_unit aou ON aou.id = acct.circ_lib
+WHERE DATE(acct.xact_start) BETWEEN '2019-07-01' AND '2020-06-30'
 AND acct.circ_lib IN (SELECT id FROM actor.org_unit_descendants((SELECT id FROM actor.org_unit WHERE shortname = 'INN')))
 GROUP BY 2, 3;
 ```
@@ -930,12 +838,12 @@ As our starting place we are going to look at a very simple circulation report t
 
 ```sql
 SELECT acirc.id, au.usrname, ssr.title
-FROM actor.usr au 
-JOIN action.circulation acirc ON acirc.usr = au.id 
-JOIN asset.copy acp ON acp.id = acirc.target_copy 
-JOIN asset.call_number acn ON acn.id = acp.call_number 
-JOIN reporter.super_simple_record ssr ON ssr.id = acn.record 
-WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31' 
+FROM actor.usr au
+JOIN action.circulation acirc ON acirc.usr = au.id
+JOIN asset.copy acp ON acp.id = acirc.target_copy
+JOIN asset.call_number acn ON acn.id = acp.call_number
+JOIN reporter.super_simple_record ssr ON ssr.id = acn.record
+WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31'
 LIMIT 10;
 
 id       | usrname     |                      title                       
@@ -962,13 +870,13 @@ as well as 'um.stat\_cat\_entry' to the SELECT line.  Why?  You want a left join
 
 ```sql
 SELECT acirc.id, au.usrname, ssr.title, um.stat_cat_entry
-FROM actor.usr au 
-JOIN action.circulation acirc ON acirc.usr = au.id 
-JOIN asset.copy acp ON acp.id = acirc.target_copy 
-JOIN asset.call_number acn ON acn.id = acp.call_number 
-JOIN reporter.super_simple_record ssr ON ssr.id = acn.record 
+FROM actor.usr au
+JOIN action.circulation acirc ON acirc.usr = au.id
+JOIN asset.copy acp ON acp.id = acirc.target_copy
+JOIN asset.call_number acn ON acn.id = acp.call_number
+JOIN reporter.super_simple_record ssr ON ssr.id = acn.record
 LEFT JOIN actor.stat_cat_entry_usr_map um ON um.target_usr = au.id
-WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31' 
+WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31'
 LIMIT 10;
 
 id       |    usrname     |         title          |    stat_cat_entry    
@@ -977,9 +885,9 @@ id       |    usrname     |         title          |    stat_cat_entry
 30852615 | ABCDEFGHI      | Baby Beluga            | Blue
 30852597 | ABCDEFGHI      | The dentist's office   | Blue
 30852597 | ABCDEFGHI      | The dentist's office   | Blue
-31397285 | 44440003077777 | Bringing down the Duke | 
+31397285 | 44440003077777 | Bringing down the Duke |
 31397285 | 44440003077777 | Bringing down the Duke | Red
-31397285 | 44440003077777 | Bringing down the Duke | 
+31397285 | 44440003077777 | Bringing down the Duke |
 31397285 | 44440003077777 | Bringing down the Duke | Red
 30852544 | ABCDEFGHI      | Hurty feelings         | Red
 30852544 | ABCDEFGHI      | Hurty feelings         | Blue
@@ -990,17 +898,17 @@ Understandably they didn’t like the duplicates so they tried to solve it by ad
 
 ```sql
 SELECT acirc.id, au.usrname, ssr.title, um.stat_cat_entry
-FROM actor.usr au 
-JOIN action.circulation acirc ON acirc.usr = au.id 
-JOIN asset.copy acp ON acp.id = acirc.target_copy 
-JOIN asset.call_number acn ON acn.id = acp.call_number 
-JOIN reporter.super_simple_record ssr ON ssr.id = acn.record 
+FROM actor.usr au
+JOIN action.circulation acirc ON acirc.usr = au.id
+JOIN asset.copy acp ON acp.id = acirc.target_copy
+JOIN asset.call_number acn ON acn.id = acp.call_number
+JOIN reporter.super_simple_record ssr ON ssr.id = acn.record
 LEFT JOIN actor.stat_cat_entry_usr_map um ON um.target_usr = au.id
-WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31' 
+WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31'
 AND um.stat_cat_entry = 'Blue'
 LIMIT 10;
 
-id        |    usrname     |                        title                        | stat_cat_entry 
+id        |    usrname     |                        title                        | stat_cat_entry
 ----------+----------------+-----------------------------------------------------+----------------
 30819908  | 44440004077778 | Sing                                                | Blue
 31397022  | 12340004077779 | How to do nothing : resisting the attention economy | Blue
@@ -1020,33 +928,33 @@ At this point they got frustrated and I started looking at it.  The darned if yo
 I started by taking out the filter on the stat cat and prettying up the output by adding a case statement like this:  
 
 ```sql
-SELECT acirc.id, au.usrname, ssr.title, 
-    CASE 
+SELECT acirc.id, au.usrname, ssr.title,
+    CASE
         WHEN um.stat_cat_entry IS NULL THEN NULL
         WHEN um.stat_cat_entry != 'Blue' THEN NULL
         ELSE 'Blue'
     END AS stat_cat_text
-FROM actor.usr au 
-JOIN action.circulation acirc ON acirc.usr = au.id 
-JOIN asset.copy acp ON acp.id = acirc.target_copy 
-JOIN asset.call_number acn ON acn.id = acp.call_number 
-JOIN reporter.super_simple_record ssr ON ssr.id = acn.record 
+FROM actor.usr au
+JOIN action.circulation acirc ON acirc.usr = au.id
+JOIN asset.copy acp ON acp.id = acirc.target_copy
+JOIN asset.call_number acn ON acn.id = acp.call_number
+JOIN reporter.super_simple_record ssr ON ssr.id = acn.record
 LEFT JOIN actor.stat_cat_entry_usr_map um ON um.target_usr = au.id
-WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31' 
+WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31'
 LIMIT 10;
 
-id       |    usrname     |         title          | stat_cat_text 
+id       |    usrname     |         title          | stat_cat_text
 ---------+----------------+------------------------+---------------
-31397285 | 23450003077757 | Bringing down the Duke | 
-31397285 | 23450003077757 | Bringing down the Duke | 
-31397285 | 23450003077757 | Bringing down the Duke | 
-31397285 | 23450003077757 | Bringing down the Duke | 
+31397285 | 23450003077757 | Bringing down the Duke |
+31397285 | 23450003077757 | Bringing down the Duke |
+31397285 | 23450003077757 | Bringing down the Duke |
+31397285 | 23450003077757 | Bringing down the Duke |
 30852544 | AGABFLCMG      | Hurty feelings         | Blue
-30852544 | AGABFLCMG      | Hurty feelings         | 
-31346829 | 20049000020969 | The valentine legacy   | 
-31346829 | 20049000020969 | The valentine legacy   | 
-31346829 | 20049000020969 | The valentine legacy   | 
-31346829 | 20049000020969 | The valentine legacy   | 
+30852544 | AGABFLCMG      | Hurty feelings         |
+31346829 | 20049000020969 | The valentine legacy   |
+31346829 | 20049000020969 | The valentine legacy   |
+31346829 | 20049000020969 | The valentine legacy   |
+31346829 | 20049000020969 | The valentine legacy   |
 (10 rows)
 ```
 
@@ -1059,18 +967,18 @@ We are almost in 2021 but we have one thing to wrap up here first.  We left off 
 The first thing to do is separate out the data we want on patron statistical categories into a separate table.  Here we create a TEMP table which means it only exists for the duration of our session.  I still drop it afterwards because I like to keep it tidy.  I do a left join to the table which means that each circulation will still show but we only get the entries for the 'Blue' ones.  This has the effect of both providing the data source and the filtering of the case while only giving one row per circulation.  
 
 ```sql
-CREATE TEMP TABLE stat_cat_stuff AS 
-SELECT * FROM actor.stat_cat_entry_usr_map 
+CREATE TEMP TABLE stat_cat_stuff AS
+SELECT * FROM actor.stat_cat_entry_usr_map
 WHERE stat_cat_entry = 'Blue';
 
 SELECT acirc.id, au.usrname, ssr.title, scs.stat_cat_entry
-FROM actor.usr au 
-JOIN action.circulation acirc ON acirc.usr = au.id 
-JOIN asset.copy acp ON acp.id = acirc.target_copy 
-JOIN asset.call_number acn ON acn.id = acp.call_number 
-JOIN reporter.super_simple_record ssr ON ssr.id = acn.record 
+FROM actor.usr au
+JOIN action.circulation acirc ON acirc.usr = au.id
+JOIN asset.copy acp ON acp.id = acirc.target_copy
+JOIN asset.call_number acn ON acn.id = acp.call_number
+JOIN reporter.super_simple_record ssr ON ssr.id = acn.record
 LEFT JOIN stat_cat_stuff scs ON scs.target_usr = au.id
-WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31' 
+WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31'
 LIMIT 10;
 
 DROP TABLE stat_cat_stuff;
@@ -1086,13 +994,13 @@ and the query:
 
 ```sql
 SELECT acirc.id, au.usrname, ssr.title, scs.stat_cat_entry
-FROM actor.usr au 
-JOIN action.circulation acirc ON acirc.usr = au.id 
-JOIN asset.copy acp ON acp.id = acirc.target_copy 
-JOIN asset.call_number acn ON acn.id = acp.call_number 
-JOIN reporter.super_simple_record ssr ON ssr.id = acn.record 
+FROM actor.usr au
+JOIN action.circulation acirc ON acirc.usr = au.id
+JOIN asset.copy acp ON acp.id = acirc.target_copy
+JOIN asset.call_number acn ON acn.id = acp.call_number
+JOIN reporter.super_simple_record ssr ON ssr.id = acn.record
 LEFT JOIN (SELECT * FROM actor.stat_cat_entry_usr_map WHERE stat_cat_entry = 'Blue') scs ON scs.target_usr = au.id
-WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31' 
+WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31'
 LIMIT 10;
 ```
 
@@ -1100,20 +1008,83 @@ What is the functional difference?  On this scale, none that matters.  I do like
 
 ```sql
 WITH stat_cat_stuff AS (
-  SELECT * FROM actor.stat_cat_entry_usr_map 
+  SELECT * FROM actor.stat_cat_entry_usr_map
   WHERE stat_cat_entry = 'Blue'
-) 
+)
 SELECT acirc.id, au.usrname, ssr.title, scs.stat_cat_entry
-FROM actor.usr au 
-JOIN action.circulation acirc ON acirc.usr = au.id 
-JOIN asset.copy acp ON acp.id = acirc.target_copy 
-JOIN asset.call_number acn ON acn.id = acp.call_number 
-JOIN reporter.super_simple_record ssr ON ssr.id = acn.record 
+FROM actor.usr au
+JOIN action.circulation acirc ON acirc.usr = au.id
+JOIN asset.copy acp ON acp.id = acirc.target_copy
+JOIN asset.call_number acn ON acn.id = acp.call_number
+JOIN reporter.super_simple_record ssr ON ssr.id = acn.record
 LEFT JOIN stat_cat_stuff scs ON scs.target_usr = au.id
-WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31' 
+WHERE acirc.xact_start BETWEEN '2020-01-01' and '2020-12-31'
 LIMIT 10;
 ```
 
 I like CTEs because they allow you to keep queries discrete and tidy, a win/win.
 
+### <a name="xmlstarlet"></a> XMLStarlet - Get It Over With
 
+My job was once described as heavily involving punching MARC records in the face.  There is definitely some truth to that.  And if you do database work with Evergreen and are looking to handle ILS specific tasks you probably are working with MARC records.  Once you load marc records into a Postgres system, probably as MARCXML, you have a lot of options of how to deal with them.  But sometimes you don't want to bother.  So let us look at a non-database way of approaching a task of parsing data out of MARC.  This clearly is not Evergreen specific but it is my blog so I can break my own rules.  
+
+The task: I have a list of barcodes and I want to know if they are in the embedded holdings of a bunch of bibs.  I could load these into Evergreen and use oils_xpath to search with XPath.  Koha has a similar function.  But those require loading the bibs.  Instead I can just a command line tool.  Xmlstarlet exists for Windows, Mac, Linux and a few other operating systems.  
+
+The general structure of an XMLStarlet invocation is as follows:
+
+```
+xmlstarlet [action] [parameters for action] file
+```
+
+A useful tool is to quickly just check to see what the structure of the XML file looks like.  With MARCXML is should be predictable.  
+
+```
+derleth@test:~/data$ xmlstarlet el -u bibs.xml
+collection
+collection/record
+collection/record/controlfield
+collection/record/datafield
+collection/record/datafield/subfield
+collection/record/leader
+```
+
+
+rhamby@migrator2:~/data$ xmlstarlet el -v march11.xml | grep '852' | sort | uniq -c
+      1 collection/record/datafield[@tag='852' and @ind1='0' and @ind2=' ']
+   2018 collection/record/datafield[@tag='852' and @ind1='0' and @ind2='0']
+   1114 collection/record/datafield[@tag='852' and @ind1='1' and @ind2=' ']
+   3812 collection/record/datafield[@tag='852' and @ind1=' ' and @ind2=' ']
+  18672 collection/record/datafield[@tag='852' and @ind1=' ' and @ind2='0']
+
+
+
+xmlstarlet el -v march11.xml | grep '852'
+
+rhamby@migrator2:~/data$ xmlstarlet el -a march11.xml | sort | uniq -c
+      1 collection
+  25216 collection/record
+  78949 collection/record/controlfield
+  78949 collection/record/controlfield/@tag
+ 627560 collection/record/datafield
+ 627560 collection/record/datafield/@ind1
+ 627560 collection/record/datafield/@ind2
+1163369 collection/record/datafield/subfield
+1163369 collection/record/datafield/subfield/@code
+ 627560 collection/record/datafield/@tag
+  25216 collection/record/leader
+      1 collection/@xmlns
+
+xmlstarlet [action] [one or more action parameters] [xpath statement] [file]
+
+xmlstarlet sel -t -v 'count(//*[@tag="852"]/*[@code="p"])' march11.xml
+25532
+
+xmlstarlet sel -t -v '//*[@tag="852"]/*[@code="p"]/text()' march11.xml
+
+xmlstarlet sel -t -v '//*[@tag="852"]/*[@code="p"]/text()' march11.xml > barcode_list_from_bib.txt
+
+grep -o -f to_look_for.txt barcode_list_from_bib.txt
+
+rhamby@migrator2:~/data$ grep -o -f to_look_for.txt barcode_list_from_bib.txt > found.txt
+rhamby@migrator2:~/data$ wc -l found.txt
+1064 found.txt
