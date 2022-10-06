@@ -4,7 +4,7 @@
 
 I was working with someone recently and was reminded that sometimes the biggest time savers are the simplest things. What follows is a simple one line bash script. It isn't fancy. No one who has done much in bash is going to be impressed. But if you spend a lot of time on the command line with psql this sort of wrapping of things is very useful and if you are new to it this sort of thing is a great to have in your toolbox. 
 
-I call the script 'so' though you could name it something more meaningful. Why do I call it 'so'? Basically becuase each time I run it I'm thinking "so, let us see what happens."
+I call the script 'so' though you could name it something more meaningful. Why do I call it 'so'? Basically because each time I run it I'm thinking "so, let us see what happens."
 
 ```
 #!/bin/bash

@@ -30,3 +30,4 @@ Quick links for posts:
 * [Asking Discrete Questions 2 of 2](discrete.md#discrete2) 2020-12-31
 * [XMLStarlet - Get It Over With](xmlstarlet.md) 2021-03-14
 * [So What? - A Simple Script](so_what.md) 2022-10-06
+* [Load CSV Fast and Easy](load_csv.md) 2022-10-06
