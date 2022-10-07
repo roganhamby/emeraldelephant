@@ -82,18 +82,18 @@ echo "\\copy $2.$tblname ($copylist) FROM $1.csv CSV HEADER;" >> create_$1.sql
 This version is what I call create_child_from_csv and acts the same as the other but adds the fields to a child table. It uses the table to make a child of as the third parameter. To illustrate:
 
 ```console 
-create_child_from_csv this my_project actor.usr
+create_child_from_csv this my_project m_actor_usr
 ```
 
 And the result is 
 
 ```console 
-CREATE TABLE my_project.actor_usr_legacy (
+CREATE TABLE my_project.m_actor_usr_legacy (
     l_first_name TEXT
     ,l_middle_name TEXT
     ,l_family_name TEXT
-) INHERITS (my_project.actor_usr);
-\copy my_project.actor_usr_legacy (l_first name,l_middle name,l_family name) FROM this.csv CSV HEADER;
+) INHERITS (my_project.m_actor_usr);
+\copy my_project.m_actor_usr_legacy (l_first name,l_middle name,l_family name) FROM this.csv CSV HEADER;
 ```
 
 [![Return to Index](https://raw.githubusercontent.com/roganhamby/emeraldelephant/master/Azzuri_tiny.png)](index.html)
