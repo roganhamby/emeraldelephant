@@ -5,11 +5,12 @@ Welcome to Emerald Elephants.  The goal of this blog is to demystify some of the
 Feel free to contact me on Twitter @roganhamby or file a request through Github issues.
 
 Future topics:
-* Identifying a point of time for a state of an item.
-* Finding encoding issues in MARCXML.
-* Creating a heat map with circulation data.
-* Extracting data from MARC aka Holdings Data Not Available during Import 
-* Identifying empty bibs  
+* November 2022 Identifying empty bibs
+* December 2022 Identifying a point of time for a state of an item.
+* January 2023 Finding encoding issues in MARCXML.
+* February 2023 Creating a heat map with circulation data.
+* March 2023 Extracting data from MARC aka Holdings Data Not Available during Import 
+* April 2023 Copy visibility 
 
 For those looking for other Evergreen resources:
 
