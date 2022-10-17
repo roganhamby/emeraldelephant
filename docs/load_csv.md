@@ -101,6 +101,6 @@ UPDATE!
 I had cause to update the scripts a bit the other day so here they are:
 
 * [Create Child Table From Header](create_child_table_from_header)
-* [Create Parent Table From Header](create_parent_table_from_header`)
+* [Create Parent Table From Header](create_standalone_table_from_header)
 
 [![Return to Index](https://raw.githubusercontent.com/roganhamby/emeraldelephant/master/Azzuri_tiny.png)](index.html)
