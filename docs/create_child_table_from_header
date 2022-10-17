@@ -1,0 +1,79 @@
+#!/bin/bash
+# $1 = file name without the csv 
+# $2 = schema name
+# $3 = production table
+# $4 = file type for delimiter - currently supports csv ',' psv '|' and tsv '\t'
+if [ -z "$1" ]; then 
+    echo "The first variable, the file name without an extension, is missing."
+    exit 1
+fi 
+if [ -z "$2" ]; then 
+    echo "The second variable, the schema name, is missing."
+    exit 1
+fi 
+if [ -z "$3" ]; then 
+    echo "The third variable, the production table name, is missing."
+    exit 1
+fi 
+if [ -z "$4" ]; then 
+    echo "The fourth variable, the delimiter type of csv, psv or tsv, is missing."
+    exit 1
+fi 
+if [ $4 != 'csv' ] && [ $4 != 'tsv' ] && [ $4 != 'pvs' ]; then 
+    echo "The delimiter must be csv, tsv or psv."
+    exit 1
+fi
+
+#setup variables 
+filename=$1
+schema=$2
+tblname=$3
+extension=$4
+delimiter=''
+l="_legacy"
+tblname=${tblname//./_}
+parenttbl=$tblname
+tblname="$tblname$l"
+if [ $4 = 'tsv' ]; then 
+    delimiter="\t" 
+fi
+if [ $4 = 'csv' ]; then 
+    delimiter="," 
+fi
+if [ $4 = 'psv' ]; then 
+    delimiter="|" 
+fi
+
+#make and clean up the header to creats a copylist for the /copy statment
+#and a tablelist for creating the table 
+headerlist="$(head -n1 $1.$extension)"  
+headerlist=$(echo "$headerlist" | tr ' ' '_' | tr -d '[:digit:]' | tr '[:upper:]' '[:lower:]')
+copylist=$(echo "$headerlist" | tr $delimiter ',')
+tablelist=$(echo "$headerlist" | tr $delimiter '\n')
+
+# make the table creation 
+echo "$tablelist" > create_$filename.sql 
+sed -i "s/^/    ,l_/" create_$filename.sql
+sed -i 's/$/ TEXT/' create_$filename.sql
+sed -i '1 s/,/ /' create_$filename.sql #no comma on first column def or it not happy code
+sed -i "1 i\\CREATE TABLE $schema.$tblname (" create_$filename.sql
+echo ") INHERITS ($schema.$parenttbl);" >> create_$filename.sql
+
+#make the copylist ready
+copylist=$(echo "$copylist" | sed 's/,/,l_/g')
+l="l_"
+copylist=$l$copylist #adding the l_ for the very first one 
+
+#create the copy statement below the table creation
+if [ $extension = 'tsv' ]; then 
+    echo "\\copy $schema.$tblname ($copylist) FROM $filename.$extension DELIMITER E'\t' CSV HEADER;" >> create_$filename.sql
+else 
+    echo "\\copy $schema.$tblname ($copylist) FROM $filename.$extension DELIMITER '$delimiter' CSV HEADER;" >> create_$filename.sql
+fi
+echo "ALTER TABLE $schema.$tblname ADD COLUMN x_migrate BOOLEAN DEFAULT TRUE;" >> create_$filename.sql
+echo "ALTER TABLE $schema.$tblname ADD COLUMN x_migrate_reason TEXT[];" >> create_$filename.sql
+
+sed -i "1 i\\DROP TABLE IF EXISTS $schema.$tblname;" create_$filename.sql
+
+
+

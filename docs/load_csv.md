@@ -96,4 +96,11 @@ CREATE TABLE my_project.m_actor_usr_legacy (
 \copy my_project.m_actor_usr_legacy (l_first name,l_middle name,l_family name) FROM this.csv CSV HEADER;
 ```
 
+UPDATE!
+
+I had cause to update the scripts a bit the other day so here they are:
+
+* [Create Child Table From Header](create_child_table_from_header)
+* [Create Parent Table From Header](create_parent_table_from_header`)
+
 [![Return to Index](https://raw.githubusercontent.com/roganhamby/emeraldelephant/master/Azzuri_tiny.png)](index.html)
