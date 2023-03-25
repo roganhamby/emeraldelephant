@@ -4,14 +4,6 @@ Welcome to Emerald Elephants.  The goal of this blog is to demystify some of the
 
 Feel free to contact me on Twitter @roganhamby or file a request through Github issues.
 
-Future topics:
-* November 2022 Identifying empty bibs
-* December 2022 Identifying a point of time for a state of an item.
-* January 2023 Finding encoding issues in MARCXML.
-* February 2023 Creating a heat map with circulation data.
-* March 2023 Extracting data from MARC aka Holdings Data Not Available during Import 
-* April 2023 Copy visibility 
-
 For those looking for other Evergreen resources:
 
 * [Evergreen WIKI](https://wiki.evergreen-ils.org/doku.php)
@@ -32,3 +24,4 @@ Quick links for posts:
 * [XMLStarlet - Get It Over With](xmlstarlet.md) 2021-03-14
 * [So What? - A Simple Script](so_what.md) 2022-10-06
 * [Load CSV Fast and Easy](load_csv.md) 2022-10-06
+* [What is Where in the Database?](whatiswhere.md) 2023-03-25
